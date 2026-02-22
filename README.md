@@ -1,7 +1,7 @@
-# AIOps Infrastructure System - Projektplan
+# AlertGateAI
 
 ## Projekt-Kontext
-Wir bauen einen Bot, der Infrastruktur-Alarme (Syslogs, E-Mails von Servern) empfängt. Er nutzt KI, um eine Erstdiagnose zu erstellen. Anschließend alarmiert er eine Rufbereitschaft über ein Eskalationsmodell (E-Mail -> Messenger -> Twilio Sprachanruf) und gibt konkrete Tipps zur Fehlerbehebung. Das System besteht aus einem Frontend (Dashboard) und einem Backend, bereitgestellt via Docker auf einem Linux-System.
+AlertGateAI ist ein intelligentes AIOps-System, das Infrastruktur-Alarme (Syslogs, E-Mails) empfängt, mit KI eine Erstdiagnose erstellt und die Rufbereitschaft über ein Eskalationsmodell (E-Mail → Twilio) alarmiert. Das System besteht aus einem React-Frontend (Dashboard) und einem Python/FastAPI-Backend, bereitgestellt via Docker.
 
 ## Entwicklungs-Richtlinien (Antigravity-Regeln)
 

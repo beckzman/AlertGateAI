@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
     print("AIOps Backend wird heruntergefahren.")
 
 # FastAPI App initialisieren
-app = FastAPI(title="AIOps Bot Backend", lifespan=lifespan)
+app = FastAPI(title="AlertGateAI Backend", lifespan=lifespan)
 
 # CORS Middleware hinzufügen (erlaubt Anfragen vom Frontend)
 app.add_middleware(

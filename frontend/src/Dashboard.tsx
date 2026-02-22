@@ -53,7 +53,7 @@ export default function Dashboard() {
                 <div className="flex items-center gap-3">
                     <Activity className="text-blue-500 w-8 h-8" />
                     <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
-                        AIOps Command Center
+                        AlertGateAI
                     </h1>
                 </div>
                 <div className="flex items-center gap-4 text-sm font-medium">
