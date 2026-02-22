@@ -18,4 +18,13 @@
 *   [ ] CI/CD: Einfache GitHub Actions (Build-Check).
 
 🚀 **Zukünftige Baustellen:**
-*   [ ] (Keine weiteren spezifischen Punkte hier, da die relevanten Aufgaben verschoben wurden)
+*   [ ] **Zentrales Notification-Management**:
+    *   Entwicklung eines dedizierten Moduls zur Verwaltung von Alert-Zielen.
+    *   Konfigurations-Interface für Kanäle: Mail, Teams, SMS, Voice.
+*   [ ] **MS Teams Integration**:
+    *   Anbindung via Incoming Webhooks für Echtzeit-Alerts.
+    *   Adaptive Cards für KI-Diagnosen und "Acknowledge"-Buttons.
+*   [ ] **Advanced Dashboard Features**:
+    *   Filterung & Suche: Filtern nach Zeiträumen, IP-Adressen oder Severity.
+    *   Gruppierung: Logik zum Zusammenfassen ähnlicher Fehlerbilder in der View.
+    *   Visualisierung: Implementierung von Charts (z.B. Alert-Frequenz über 24h) mit Recharts/Chart.js.
