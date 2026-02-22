@@ -20,7 +20,9 @@ export default function Dashboard() {
 
     const fetchLogs = async () => {
         try {
-            const response = await fetch('http://localhost:8000/logs')
+            // In Produktion nutzen wir oft denselben Host oder eine Env-Variable
+            const apiUrl = import.meta.env.VITE_API_URL || `${window.location.protocol}//${window.location.hostname}:8000`
+            const response = await fetch(`${apiUrl}/logs`)
             if (response.ok) {
                 const data = await response.json()
                 setLogs(data)

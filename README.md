@@ -27,22 +27,30 @@ Das System wird über eine `.env` Datei im `backend/` Ordner konfiguriert.
 *   `GOOGLE_API_KEY`: API Key für Gemini
 *   `LOCAL_LLM_URL`: URL für lokale KI (z.B. http://localhost:1234/v1)
 
-## Tech-Stack (Festgelegt)
+## Quick Start mit Docker
+Das System ist für den Betrieb mit Docker und Docker Compose vorkonfiguriert.
 
-| Komponente | Technologie-Vorschlag | Begründung |
-| :--- | :--- | :--- |
-| **Backend & Ingestion** | Python (FastAPI) | Ideal für schnelle APIs, asynchrone Tasks (Logs empfangen) und KI-Integration. |
-| **Log-Verarbeitung** | logging / socket / imaplib | Direkter Empfang von Syslogs über UDP/TCP und Lesen von IMAP-Postfächern. |
-| **KI / Diagnose** | LLM-API (z.B. Gemini) oder lokal (Ollama) | Extrahiert Fehler aus unstrukturiertem Text und generiert Diagnose-Tipps. |
-| **Alarmierung** | Twilio API, SMTP, Messenger Webhooks | Twilio für Voice, Standard-Bibliotheken für Mail, Webhooks für z.B. Telegram/Slack. |
-| **Frontend** | React, Vue.js oder Streamlit | Streamlit für einen rasend schnellen Prototyp, React für ein vollwertiges Dashboard. |
-| **Deployment** | Docker & Docker Compose | Sorgt für ein reibungsloses und isoliertes Deployment auf deinem Linux-System. |
+### 1. Konfiguration
+Kopiere `backend/.env.example` nach `backend/.env` und trage deine API-Keys (Gemini, Twilio, SMTP) ein.
+*   **Wichtig**: Setze `DATABASE_URL=sqlite:////app/data/aiops.db` für Docker-Persistenz.
 
-## Taskliste (Auszug)
-*   [x] Modul A: Ingestion (Syslog, Email, Queue, Filter)
-*   [x] Modul B: KI-Diagnose (Gemini & Lokale LLM Integration)
-*   **[ ] Modul C: Alerting / Eskalation**
-    *   [ ] Echte SMTP/Twilio Integration
-    *   [ ] Deduplizierungs-Mechanismus (Alert-Storm Protection)
-*   [ ] Frontend: Dashboard (React oder Streamlit)
-*   [ ] Deployment: Docker Compose Setup
+### 2. Starten
+```bash
+docker-compose up -d --build
+```
+
+### Ports
+*   **Frontend**: Port `80` (HTTP)
+*   **Backend API**: Port `8000`
+*   **Syslog Receiver**: Port `5140/udp`
+
+---
+
+## Modul-Status & Fortschritt
+Detaillierte Aufgaben findest du in der [task.md](./task.md).
+
+*   ✅ **Modul A (Ingestion)**: Syslog, IMAP, Normalisierung & Filterung erledigt.
+*   ✅ **Modul B (KI-Analyse)**: Google Gemini & Lokale LLM Integration erledigt.
+*   ✅ **Modul C (Alerting)**: Deduplizierung, SMTP & Twilio Integration erledigt.
+*   ✅ **Frontend**: React Dashboard (Vite/Tailwind) erledigt.
+*   🚀 **Deployment**: Docker & Compose Setup einsatzbereit.

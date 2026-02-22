@@ -9,14 +9,13 @@
 *   [x] Gemini API Integration (google-generativeai) implementieren.
 *   [x] System-Prompt für präzise IT-Infrastruktur-Diagnosen erstellen.
 *   [x] Fehler-Handling für API-Timeouts oder ungültige Antworten.
+*   [x] Modul C: Alerting Logik mit Deduplizierung und KI-Zusammenfassungen.
+*   [x] Modul C: SMTP und Twilio Integration (bereit für Credentials).
+*   [x] Frontend: Modernes Dashboard (React/Vite/Tailwind) zur Visualisierung der Logs.
 
-🧑‍💻 **Aktueller Fokus – Modul C: Alerting / Eskalation:**
-*   [x] Deduplizierungs-Mechanismus (Alert-Storm Protection) mit 3-Minuten-Buffer implementiert.
-*   [x] KI-gestützte Zusammenfassung von Event-Stürmen.
-*   [ ] Echte SMTP Integration für E-Mail Versand scharfschalten.
-*   [ ] Echte Twilio Integration für SMS/Voice scharfschalten.
-*   [ ] Frontend: React Dashboard entwickeln.
-*   [ ] Deployment: Docker/Docker Compose Setup aufbauen
+🧑‍💻 **Aktueller Fokus – Deployment:**
+*   [ ] Deployment: Docker/Docker Compose Setup aufbauen (Backend + Frontend + DB-Volume).
+*   [ ] CI/CD: Einfache GitHub Actions (Build-Check).
 
 🚀 **Zukünftige Baustellen:**
 *   [ ] (Keine weiteren spezifischen Punkte hier, da die relevanten Aufgaben verschoben wurden)
