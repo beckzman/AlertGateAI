@@ -1,0 +1,62 @@
+# ========================
+# Python / Backend
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.spec
+
+# Virtuelle Umgebungen
+venv/
+.venv/
+env/
+.env_backup
+
+# WICHTIG: Echte .env Datei niemals einchecken! (enthält API-Keys)
+backend/.env
+.env
+
+# Datenbank
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# ========================
+# Node.js / Frontend
+# ========================
+node_modules/
+dist/
+.next/
+.nuxt/
+.cache/
+*.local
+
+# Vite build Output
+frontend/dist/
+
+# ========================
+# IDE / Editor
+# ========================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ========================
+# Docker
+# ========================
+*.env.prod
+docker-compose.override.yml

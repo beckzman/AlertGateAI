@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+aioimaplib
+google-generativeai
+python-dotenv
+aiosmtplib
+twilio
+openai
