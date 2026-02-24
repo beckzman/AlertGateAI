@@ -127,6 +127,34 @@ class AlertingService:
         except Exception as e:
             logger.error(f"❌ Fehler beim E-Mail Versand: {e}")
 
+    async def send_manual_email(self, recipient: str, subject: str, message: str, severity: str) -> dict:
+        """Manuell eine E-Mail-Benachrichtigung versenden."""
+        if not self.smtp_server or (self.smtp_server == "localhost" and not self.smtp_user):
+            logger.info(f"✉️ MOCK-Email an {recipient}: {subject}")
+            return {"status": "mock", "message": f"E-Mail (Mock) simuliert – kein SMTP konfiguriert"}
+
+        try:
+            msg = EmailMessage()
+            msg["Subject"] = f"[{severity}] AlertGateAI: {subject}"
+            msg["From"] = self.smtp_from
+            msg["To"] = recipient
+            msg.set_content(message)
+
+            await aiosmtplib.send(
+                msg,
+                hostname=self.smtp_server,
+                port=self.smtp_port,
+                username=self.smtp_user,
+                password=self.smtp_password,
+                use_tls=(self.smtp_port == 465),
+                start_tls=(self.smtp_port == 587)
+            )
+            logger.info(f"✉️ Manuelle E-Mail an {recipient} versendet.")
+            return {"status": "sent", "message": f"E-Mail erfolgreich an {recipient} versendet"}
+        except Exception as e:
+            logger.error(f"❌ Fehler beim manuellen E-Mail Versand: {e}")
+            return {"status": "failed", "message": str(e)}
+
     async def _send_twilio_alert(self, summary_text: str, sources: List[str]):
         """Versand via Twilio (real)"""
         if not self.twilio_sid or not self.twilio_token:

@@ -14,6 +14,11 @@ services:
     volumes:
       - alertgate_data:/app/data
     restart: always
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # React Frontend (Nginx)
   frontend:
@@ -27,6 +32,11 @@ services:
     depends_on:
       - backend
     restart: always
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:80/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   alertgate_data:

@@ -14,8 +14,8 @@
 *   [x] Frontend: Modernes Dashboard (React/Vite/Tailwind) zur Visualisierung der Logs.
 
 🧑‍💻 **Aktueller Fokus – Deployment:**
-*   [ ] Deployment: Docker/Docker Compose Setup aufbauen (Backend + Frontend + DB-Volume).
-*   [ ] CI/CD: Einfache GitHub Actions (Build-Check).
+*   [x] Deployment: Docker/Docker Compose Setup aufbauen (Backend + Frontend + DB-Volume).
+*   [x] CI/CD: Einfache GitHub Actions (Build-Check).
 
 🚀 **Zukünftige Baustellen:**
 *   [ ] **Zentrales Notification-Management**:
@@ -24,7 +24,7 @@
 *   [ ] **MS Teams Integration**:
     *   Anbindung via Incoming Webhooks für Echtzeit-Alerts.
     *   Adaptive Cards für KI-Diagnosen und "Acknowledge"-Buttons.
-*   [ ] **Advanced Dashboard Features**:
-    *   Filterung & Suche: Filtern nach Zeiträumen, IP-Adressen oder Severity.
-    *   Gruppierung: Logik zum Zusammenfassen ähnlicher Fehlerbilder in der View.
-    *   Visualisierung: Implementierung von Charts (z.B. Alert-Frequenz über 24h) mit Recharts/Chart.js.
+*   [x] **Advanced Dashboard Features**:
+    *   [x] Filterung & Suche: Filtern nach Zeiträumen, IP-Adressen oder Severity.
+    *   [x] Gruppierung: Logik zum Zusammenfassen ähnlicher Fehlerbilder in der View.
+    *   [x] Visualisierung: Implementierung von Charts (z.B. Alert-Frequenz über 24h) mit Recharts/Chart.js.
