@@ -87,14 +87,6 @@ class AIDiagnosticService:
                 "recommendation": "System-Logs manuell prüfen."
             }
 
-        except Exception as e:
-            logger.error(f"Fehler bei der Gemini KI-Analyse: {e}")
-            return {
-                "severity": "ERROR",
-                "diagnosis": f"KI-Analyse fehlgeschlagen: {str(e)}",
-                "recommendation": "1. Internetverbindung prüfen. 2. API-Key kontrollieren. 3. System-Logs manuell prüfen."
-            }
-
     def _mock_analysis(self, log_message: str) -> dict:
         """Ein rudimentäres System, um die Integration zu testen, bevor wir Geld für Tokens ausgeben."""
         log_lower = log_message.lower()

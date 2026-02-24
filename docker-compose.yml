@@ -38,5 +38,14 @@ services:
       timeout: 10s
       retries: 3
 
+  # SMTP Test-Inbox (Mailpit) – fängt alle E-Mails lokal ab
+  mailpit:
+    image: axllent/mailpit
+    container_name: alertgate_mailpit
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI → http://localhost:8025
+    restart: always
+
 volumes:
   alertgate_data:

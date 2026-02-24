@@ -1,4 +1,3 @@
-import os
 import logging
 import asyncio
 from datetime import datetime
@@ -101,9 +100,22 @@ class AlertingService:
                 pass
         return f"Event-Sturm erkannt! {len(alerts)} Alarme von {len(set(a['source'] for a in alerts))} Quellen."
 
+    async def _smtp_send(self, msg: EmailMessage):
+        """Hilfsmethode: sendet via aiosmtplib, Auth nur wenn User konfiguriert."""
+        kwargs: dict = dict(
+            hostname=self.smtp_server,
+            port=self.smtp_port,
+            use_tls=(self.smtp_port == 465),
+            start_tls=(self.smtp_port == 587),
+        )
+        if self.smtp_user:
+            kwargs["username"] = self.smtp_user
+            kwargs["password"] = self.smtp_password
+        await aiosmtplib.send(msg, **kwargs)
+
     async def _send_email_alert(self, summary_text: str, sources: List[str], severity: str):
         """Versand via SMTP (real)"""
-        if not self.smtp_server or self.smtp_server == "localhost" and not self.smtp_user:
+        if not self.smtp_server or (self.smtp_server == "localhost" and not self.smtp_user):
             logger.info("✉️ MOCK-Email: " + summary_text)
             return
 
@@ -113,16 +125,7 @@ class AlertingService:
             msg["From"] = self.smtp_from
             msg["To"] = self.on_call_email
             msg.set_content(summary_text)
-
-            await aiosmtplib.send(
-                msg,
-                hostname=self.smtp_server,
-                port=self.smtp_port,
-                username=self.smtp_user,
-                password=self.smtp_password,
-                use_tls=(self.smtp_port == 465),
-                start_tls=(self.smtp_port == 587)
-            )
+            await self._smtp_send(msg)
             logger.info(f"✉️ E-Mail erfolgreich an {self.on_call_email} versendet.")
         except Exception as e:
             logger.error(f"❌ Fehler beim E-Mail Versand: {e}")
@@ -131,7 +134,7 @@ class AlertingService:
         """Manuell eine E-Mail-Benachrichtigung versenden."""
         if not self.smtp_server or (self.smtp_server == "localhost" and not self.smtp_user):
             logger.info(f"✉️ MOCK-Email an {recipient}: {subject}")
-            return {"status": "mock", "message": f"E-Mail (Mock) simuliert – kein SMTP konfiguriert"}
+            return {"status": "mock", "message": "E-Mail (Mock) simuliert – kein SMTP konfiguriert"}
 
         try:
             msg = EmailMessage()
@@ -139,16 +142,7 @@ class AlertingService:
             msg["From"] = self.smtp_from
             msg["To"] = recipient
             msg.set_content(message)
-
-            await aiosmtplib.send(
-                msg,
-                hostname=self.smtp_server,
-                port=self.smtp_port,
-                username=self.smtp_user,
-                password=self.smtp_password,
-                use_tls=(self.smtp_port == 465),
-                start_tls=(self.smtp_port == 587)
-            )
+            await self._smtp_send(msg)
             logger.info(f"✉️ Manuelle E-Mail an {recipient} versendet.")
             return {"status": "sent", "message": f"E-Mail erfolgreich an {recipient} versendet"}
         except Exception as e:

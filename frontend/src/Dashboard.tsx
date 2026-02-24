@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Server, Activity, AlertTriangle, CheckCircle2, AlertCircle, Search, Filter, RefreshCw, Bell } from 'lucide-react'
+import { Server, Activity, AlertTriangle, CheckCircle2, AlertCircle, Search, Filter, RefreshCw, Bell, Settings } from 'lucide-react'
 import type { Page } from './App'
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/Card'
 import { Badge } from './components/ui/Badge'
@@ -11,8 +11,8 @@ import {
     YAxis,
     CartesianGrid,
     Tooltip,
+    Legend,
     ResponsiveContainer,
-    Cell
 } from 'recharts'
 
 interface LogEntry {
@@ -28,7 +28,7 @@ interface LogEntry {
 
 interface Stats {
     severity: Record<string, number>;
-    timeline: { hour: string; count: number }[];
+    timeline: { hour: string; CRITICAL: number; HIGH: number; INFO: number }[];
 }
 
 interface DashboardProps {
@@ -134,6 +134,13 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
 
                 <div className="flex items-center gap-3">
                     <button
+                        onClick={() => onNavigate('alerting')}
+                        className="flex items-center gap-2 px-3 py-2 bg-slate-900/50 hover:bg-slate-800 rounded-xl border border-slate-800 text-sm text-slate-400 hover:text-white transition-colors"
+                    >
+                        <Settings className="w-4 h-4" />
+                        <span>Alarmierung</span>
+                    </button>
+                    <button
                         onClick={() => onNavigate('notifications')}
                         className="flex items-center gap-2 px-3 py-2 bg-slate-900/50 hover:bg-slate-800 rounded-xl border border-slate-800 text-sm text-slate-400 hover:text-white transition-colors"
                     >
@@ -224,27 +231,31 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                             <Activity className="w-4 h-4" /> Alert Frequenz (letzte 24h)
                         </CardTitle>
                     </CardHeader>
-                    <CardContent className="h-64 mt-4">
+                    <CardContent className="h-72 mt-4">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={stats?.timeline || []}>
+                            <BarChart data={stats?.timeline || []} barCategoryGap="20%">
                                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                                 <XAxis
                                     dataKey="hour"
                                     stroke="#64748b"
                                     fontSize={10}
+                                    interval={2}
                                     tickFormatter={(val) => format(new Date(val), 'HH:mm')}
                                 />
-                                <YAxis stroke="#64748b" fontSize={10} />
+                                <YAxis stroke="#64748b" fontSize={10} allowDecimals={false} />
                                 <Tooltip
                                     contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px' }}
-                                    labelStyle={{ color: '#94a3b8' }}
-                                    labelFormatter={(val) => format(new Date(val), 'dd.MM. HH:mm')}
+                                    labelStyle={{ color: '#94a3b8', marginBottom: 4 }}
+                                    labelFormatter={(val) => format(new Date(val), 'dd.MM.yyyy HH:mm')}
+                                    cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                                 />
-                                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                                    {(stats?.timeline || []).map((_, index) => (
-                                        <Cell key={`cell-${index}`} fill="#3b82f6" fillOpacity={0.8} />
-                                    ))}
-                                </Bar>
+                                <Legend
+                                    wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                                    formatter={(value) => <span style={{ color: '#94a3b8' }}>{value}</span>}
+                                />
+                                <Bar dataKey="CRITICAL" stackId="a" fill="#ef4444" fillOpacity={0.85} />
+                                <Bar dataKey="HIGH" stackId="a" fill="#f59e0b" fillOpacity={0.85} />
+                                <Bar dataKey="INFO" stackId="a" fill="#3b82f6" fillOpacity={0.85} />
                             </BarChart>
                         </ResponsiveContainer>
                     </CardContent>
@@ -404,7 +415,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                                             {log.severity}
                                         </Badge>
                                     </td>
-                                    <td className="px-4 py-4 font-mono text-[10px] text-slate-500 max-w-xs truncate" title={log.message}>
+                                    <td className="px-4 py-4 font-mono text-[10px] text-slate-500 break-words min-w-[200px] max-w-sm whitespace-pre-wrap">
                                         {log.message}
                                     </td>
                                     <td className="px-4 py-4">
