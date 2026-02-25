@@ -7,3 +7,4 @@ python-dotenv
 aiosmtplib
 twilio
 openai
+slowapi

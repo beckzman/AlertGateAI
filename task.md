@@ -33,10 +33,10 @@
 ### EPIC 1 – Alert Ingestion Engine
 
 🔧 **Tasks:**
-*   [ ] REST API für Alert-Import stabilisieren (Validation + Error Handling) — _kein dedizierter REST-Endpoint für Alert-Import_
-*   [~] JSON Schema Definition für Alerts erstellen — _`NormalizedEvent` Pydantic-Modell existiert, aber unvollständig (fehlen: tags, service_name, etc.)_
-*   [ ] Rate Limiting einbauen — _nicht vorhanden_
-*   [~] Deduplizierung (Hash + Zeitfenster) — _zeitbasiertes Alert-Buffering (60s) vorhanden, aber kein Hash-basiertes Dedup auf Ingestion-Ebene_
+*   [x] REST API für Alert-Import stabilisieren (Validation + Error Handling) — _POST `/ingest` Endpoint mit Pydantic-Validation, 202 Accepted, Fehlerbehandlung_
+*   [x] JSON Schema Definition für Alerts erstellen — _`NormalizedEvent` um `service_name`, `tags`, `fingerprint` erweitert; `AlertIngestRequest` als vollständiges Import-Schema_
+*   [x] Rate Limiting einbauen — _`slowapi` integriert: 100 Requests/Minute pro IP auf `/ingest`_
+*   [x] Deduplizierung (Hash + Zeitfenster) — _SHA256-Fingerprint (source|message) + In-Memory-Cache mit 60s TTL; Duplikate werden mit `status: duplicate` zurückgewiesen_
 *   [~] Speicherung in DB (PostgreSQL oder MongoDB) — _SQLite läuft; PostgreSQL-Migration vorbereitet aber nicht umgesetzt (strftime statt date_trunc)_
 *   [~] Logging & Monitoring für eigene Plattform — _Python-Logging vorhanden, kein zentrales System (kein Prometheus/ELK)_
 

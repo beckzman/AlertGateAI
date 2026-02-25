@@ -1,7 +1,9 @@
 import asyncio
+import hashlib
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from typing import Optional
 from pydantic import BaseModel, Field
 
 from diagnosis.analyzer import AIDiagnosticService
@@ -11,35 +13,91 @@ from models.log_model import LogEntry
 
 logger = logging.getLogger(__name__)
 
-# [Aufgabe 1] 1. Ingestion Events normalisieren
+# Zeitfenster für Hash-basierte Deduplizierung (Sekunden)
+DEDUP_WINDOW_SECONDS = 60
+
+
+# [Aufgabe 1] Erweitertes NormalizedEvent-Schema (EPIC 1)
 class NormalizedEvent(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     source: str
     severity: str = "UNKNOWN"
     raw_message: str
+    service_name: Optional[str] = None
+    tags: Optional[list[str]] = None
+    fingerprint: Optional[str] = None  # SHA256(source|message) für Deduplizierung
+
 
 class EventPipeline:
     def __init__(self, analyzer: AIDiagnosticService, alerter: AlertingService):
         self.analyzer = analyzer
         self.alerter = alerter
-        
+
         # [Aufgabe 3] 3. Warteschlange (asyncio.Queue) einbauen
         self.queue = asyncio.Queue()
         # Halte starke Referenzen auf Background-Tasks, damit sie nicht vom Garbage Collector zerstört werden
         self.bg_tasks = set()
-        
+
         # [Aufgabe 2] 2. Vorfilter (RegEx / Keywords) implementieren
         # Diese Regex sucht nach bekannten Problem-Wörtern. Alles andere wird NICHT an die KI geschickt.
         self.trigger_keywords = re.compile(r"(error|critical|fail|timeout|oom|down|crash)", re.IGNORECASE)
 
-    async def ingest(self, source: str, raw_message: str):
-        """1. Mündung der Pipeline: Nimmt rohe Daten an, normalisiert sie und steckt sie in die Warteschlange."""
+        # In-Memory Dedup-Cache: fingerprint -> timestamp des letzten Eingangs
+        self._dedup_cache: dict[str, datetime] = {}
+
+    def _compute_fingerprint(self, source: str, message: str) -> str:
+        """SHA256-Fingerprint aus Quelle + normalisierter Nachricht."""
+        content = f"{source}|{message.strip()}"
+        return hashlib.sha256(content.encode()).hexdigest()[:32]
+
+    def _is_duplicate(self, fingerprint: str) -> bool:
+        """Prüft den In-Memory-Cache auf Duplikate innerhalb des Zeitfensters."""
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(seconds=DEDUP_WINDOW_SECONDS)
+
+        # Abgelaufene Einträge bereinigen
+        expired = [fp for fp, ts in self._dedup_cache.items() if ts < cutoff]
+        for fp in expired:
+            del self._dedup_cache[fp]
+
+        if fingerprint in self._dedup_cache:
+            return True
+
+        self._dedup_cache[fingerprint] = now
+        return False
+
+    async def ingest(
+        self,
+        source: str,
+        raw_message: str,
+        service_name: Optional[str] = None,
+        tags: Optional[list[str]] = None,
+    ) -> dict:
+        """1. Mündung der Pipeline: Nimmt rohe Daten an, normalisiert sie und steckt sie in die Warteschlange.
+
+        Gibt ein dict zurück: {"status": "queued"|"duplicate", "fingerprint": str}
+        """
+        fingerprint = self._compute_fingerprint(source, raw_message)
+
+        if self._is_duplicate(fingerprint):
+            logger.info(
+                f"[DEDUP] Duplikat erkannt ({fingerprint[:8]}…) von {source}. "
+                f"Zeitfenster: {DEDUP_WINDOW_SECONDS}s."
+            )
+            return {"status": "duplicate", "fingerprint": fingerprint}
+
         event = NormalizedEvent(
             source=source,
-            raw_message=raw_message
+            raw_message=raw_message,
+            service_name=service_name,
+            tags=tags,
+            fingerprint=fingerprint,
         )
         await self.queue.put(event)
-        logger.debug(f"Event von {source} in Warteschlange gelegt. (Elemente in Queue: {self.queue.qsize()})")
+        logger.debug(
+            f"Event von {source} in Warteschlange gelegt. (Elemente in Queue: {self.queue.qsize()})"
+        )
+        return {"status": "queued", "fingerprint": fingerprint}
 
     async def start_worker(self):
         """Der asynchrone Consumer, der die Events geduldig aus der Warteschlange abarbeitet."""
@@ -56,7 +114,7 @@ class EventPipeline:
 
     async def _process_event(self, event: NormalizedEvent):
         """Filterung, KI-Diagnose und Alerting für ein einzelnes Event"""
-        
+
         # Filter: Prüfen ob das Event überhaupt relevant für eine teure Diagnose ist
         if not self.trigger_keywords.search(event.raw_message):
             logger.info(f"[FILTERED] Event von {event.source} wurde als ungefährlich eingestuft. Keine KI notwendig.")
@@ -68,11 +126,11 @@ class EventPipeline:
             return
 
         logger.info(f"🚨 [TRIGGER] Relevantes Event entdeckt! Starte KI-Analyse für: {event.source}")
-        
+
         # KI-Diagnose aufrufen
         result = await self.analyzer.analyze_log(event.raw_message)
         event.severity = result.get("severity", "UNKNOWN")
-        
+
         # In DB speichern (Fire & Forget Thread)
         task = asyncio.create_task(asyncio.to_thread(self._save_to_db, event, result))
         self.bg_tasks.add(task)
@@ -92,7 +150,10 @@ class EventPipeline:
                 message=event.raw_message,
                 severity=event.severity,
                 diagnosis=diagnosis_result.get("diagnosis", ""),
-                recommendation=diagnosis_result.get("recommendation", "")
+                recommendation=diagnosis_result.get("recommendation", ""),
+                service_name=event.service_name,
+                tags=",".join(event.tags) if event.tags else None,
+                fingerprint=event.fingerprint,
             )
             db.add(log_entry)
             db.commit()

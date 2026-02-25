@@ -1,10 +1,13 @@
-from fastapi import FastAPI, Depends, BackgroundTasks, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import uvicorn
 import asyncio
-from typing import List
+from typing import List, Optional
 
 # Eigene Importe
 from core.config import settings
@@ -18,8 +21,21 @@ from ingestion.pipeline import EventPipeline
 
 from contextlib import asynccontextmanager
 
+# Rate Limiter (identifiziert Clients per Remote-IP)
+limiter = Limiter(key_func=get_remote_address)
+
 # Globale Variable um Referenzen auf ewige Tasks zu halten
 background_tasks = set()
+
+
+class AlertIngestRequest(BaseModel):
+    """Schema für den REST Alert-Import Endpoint (EPIC 1)."""
+    source: str = Field(..., min_length=1, max_length=255, description="IP-Adresse oder Hostname der Quelle")
+    message: str = Field(..., min_length=1, max_length=10_000, description="Rohe Log-/Alert-Nachricht")
+    service_name: Optional[str] = Field(None, max_length=128, description="Optionaler Service-Name (z.B. 'nginx', 'postgres')")
+    tags: Optional[List[str]] = Field(None, description="Optionale Tags (z.B. ['prod', 'k8s'])")
+    severity_hint: Optional[str] = Field(None, description="Optionaler Severity-Hinweis vom Sender (INFO/HIGH/CRITICAL)")
+
 
 class SendNotificationRequest(BaseModel):
     recipient: str
@@ -48,8 +64,9 @@ async def lifespan(app: FastAPI):
     alerter.set_analyzer(analyzer)  # Verknüpfung für KI-Zusammenfassungen
     pipeline = EventPipeline(analyzer, alerter)
 
-    # Alerter in app.state speichern für Endpoint-Zugriff
+    # Services in app.state speichern für Endpoint-Zugriff
     app.state.alerter = alerter
+    app.state.pipeline = pipeline
     
     # 0. Pipeline Worker starten (arbeitet die Warteschlange ab)
     task1 = loop.create_task(pipeline.start_worker())
@@ -70,6 +87,10 @@ async def lifespan(app: FastAPI):
 
 # FastAPI App initialisieren
 app = FastAPI(title="AlertGateAI Backend", lifespan=lifespan)
+
+# Rate Limiter registrieren
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS Middleware hinzufügen (erlaubt Anfragen vom Frontend)
 app.add_middleware(
@@ -255,6 +276,37 @@ def update_escalation_rule(severity: str, req: EscalationRuleRequest, db: Sessio
     rule.webhook_url = req.webhook_url
     db.commit()
     return {"status": "ok", "severity": severity}
+
+
+@app.post("/ingest", status_code=202)
+@limiter.limit("100/minute")
+async def ingest_alert(req: AlertIngestRequest, request: Request):
+    """REST-Endpoint für Alert-Import (EPIC 1).
+
+    Nimmt einen Alert entgegen, prüft auf Duplikate und leitet ihn an die Pipeline weiter.
+    Rate Limit: 100 Requests/Minute pro IP.
+    Antwort 202 Accepted — Verarbeitung erfolgt asynchron.
+    """
+    VALID_SEVERITIES = {"INFO", "HIGH", "CRITICAL"}
+    if req.severity_hint and req.severity_hint.upper() not in VALID_SEVERITIES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"severity_hint muss INFO, HIGH oder CRITICAL sein (übergeben: '{req.severity_hint}')."
+        )
+
+    pipeline = request.app.state.pipeline
+    result = await pipeline.ingest(
+        source=req.source,
+        raw_message=req.message,
+        service_name=req.service_name,
+        tags=req.tags,
+    )
+
+    return {
+        "status": result["status"],
+        "fingerprint": result["fingerprint"],
+        "detail": "Duplikat ignoriert." if result["status"] == "duplicate" else "Alert wird verarbeitet.",
+    }
 
 
 # Einstiegspunkt für lokales Testen

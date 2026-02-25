@@ -12,6 +12,11 @@ class LogEntry(Base):
     source_ip = Column(String, index=True)
     message = Column(String)
 
+    # Erweiterte Metadaten (EPIC 1)
+    service_name = Column(String, nullable=True, index=True)
+    tags = Column(String, nullable=True)          # kommagetrennte Tags
+    fingerprint = Column(String, nullable=True, index=True)  # SHA256 für Dedup
+
     # Diagnose Ergebnisse (B)
     severity = Column(String, index=True, default="INFO")
     diagnosis = Column(String, nullable=True)
