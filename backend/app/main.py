@@ -104,6 +104,31 @@ app.add_middleware(
 # Tabellen in der Datenbank erstellen (falls sie noch nicht existieren)
 Base.metadata.create_all(bind=engine)
 
+
+def _run_migrations():
+    """Fügt fehlende Spalten zu bestehenden SQLite-Tabellen hinzu.
+    SQLAlchemy create_all erstellt keine neuen Spalten in bereits vorhandenen Tabellen.
+    """
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        existing_cols = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(log_entries)")).fetchall()
+        }
+        new_columns = [
+            ("service_name", "VARCHAR"),
+            ("tags",         "VARCHAR"),
+            ("fingerprint",  "VARCHAR"),
+            ("confidence",   "REAL"),
+        ]
+        for col_name, col_type in new_columns:
+            if col_name not in existing_cols:
+                conn.execute(text(f"ALTER TABLE log_entries ADD COLUMN {col_name} {col_type}"))
+                print(f"Migration: Spalte '{col_name}' zu log_entries hinzugefügt.")
+        conn.commit()
+
+
+_run_migrations()
+
 # Standard-Eskalationsregeln anlegen wenn noch nicht vorhanden
 def _seed_escalation_rules():
     from sqlalchemy.orm import Session
@@ -151,7 +176,8 @@ def get_logs(
         "severity": log.severity,
         "message": log.message,
         "diagnosis": log.diagnosis,
-        "recommendation": log.recommendation
+        "recommendation": log.recommendation,
+        "confidence": log.confidence,
     } for log in logs]
 
 @app.get("/stats")

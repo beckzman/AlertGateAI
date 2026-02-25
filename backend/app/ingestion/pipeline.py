@@ -145,12 +145,18 @@ class EventPipeline:
         """Speichert den Log-Eintrag synchron in der Datenbank"""
         db = SessionLocal()
         try:
+            raw_confidence = diagnosis_result.get("confidence")
+            confidence = float(raw_confidence) if raw_confidence is not None else None
+            if confidence is not None:
+                confidence = max(0.0, min(1.0, confidence))  # Clampen auf [0.0, 1.0]
+
             log_entry = LogEntry(
                 source_ip=event.source,
                 message=event.raw_message,
                 severity=event.severity,
                 diagnosis=diagnosis_result.get("diagnosis", ""),
                 recommendation=diagnosis_result.get("recommendation", ""),
+                confidence=confidence,
                 service_name=event.service_name,
                 tags=",".join(event.tags) if event.tags else None,
                 fingerprint=event.fingerprint,

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Float
 from sqlalchemy.orm import declarative_base
 from datetime import datetime, timezone
 
@@ -21,6 +21,7 @@ class LogEntry(Base):
     severity = Column(String, index=True, default="INFO")
     diagnosis = Column(String, nullable=True)
     recommendation = Column(String, nullable=True)
+    confidence = Column(Float, nullable=True)  # KI-Konfidenz 0.0–1.0 (EPIC 2)
 
 
 class EscalationRule(Base):

@@ -48,7 +48,7 @@
 *   [x] Prompt-Template standardisieren — _einheitliches Template für Gemini + lokale LLMs_
 *   [x] Severity-Mapping (INFO/HIGH/CRITICAL) — _vollständig implementiert inkl. Mock-Logik_
 *   [x] Handlungsempfehlung generieren — _`recommendation`-Feld in DB + Dashboard angezeigt_
-*   [ ] Confidence Score einführen — _nicht vorhanden; KI gibt nur severity/diagnosis/recommendation zurück_
+*   [x] Confidence Score einführen — _KI-Prompt + Mock um `confidence` (Float 0.0–1.0) erweitert; in DB gespeichert; Progress-Bar im Dashboard (grün ≥80%, gelb ≥50%, rot <50%)_
 *   [x] Fallback-Mechanismus bei LLM-Fehlern — _Mock-Modus bei fehlendem API-Key + Exception-Handling_
 
 ---

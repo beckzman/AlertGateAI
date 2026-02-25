@@ -22,6 +22,7 @@ interface LogEntry {
     message: string;
     diagnosis: string;
     recommendation?: string;
+    confidence?: number | null;
     timestamp: string;
     count?: number; // Neu für Gruppierung
 }
@@ -422,6 +423,25 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                                         <div className="text-slate-200 font-medium leading-relaxed">
                                             {log.diagnosis}
                                         </div>
+                                        {log.confidence != null && (
+                                            <div className="mt-1.5 flex items-center gap-2">
+                                                <div className="h-1 w-20 rounded-full bg-slate-700 overflow-hidden">
+                                                    <div
+                                                        className={`h-full rounded-full transition-all ${
+                                                            log.confidence >= 0.8 ? 'bg-emerald-500' :
+                                                            log.confidence >= 0.5 ? 'bg-amber-500' : 'bg-red-500'
+                                                        }`}
+                                                        style={{ width: `${Math.round(log.confidence * 100)}%` }}
+                                                    />
+                                                </div>
+                                                <span className={`text-[10px] font-semibold tabular-nums ${
+                                                    log.confidence >= 0.8 ? 'text-emerald-500' :
+                                                    log.confidence >= 0.5 ? 'text-amber-500' : 'text-red-400'
+                                                }`}>
+                                                    {Math.round(log.confidence * 100)}%
+                                                </span>
+                                            </div>
+                                        )}
                                         {log.recommendation && (
                                             <div className="text-[11px] text-emerald-500/80 mt-1 flex items-center gap-1">
                                                 <CheckCircle2 className="w-3 h-3" />

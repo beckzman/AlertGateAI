@@ -49,11 +49,12 @@ class AIDiagnosticService:
         ---
         {log_message}
         ---
-        Gib dein Ergebnis IMMER im JSON-Format zurück mit den folgenden 3 Feldern:
+        Gib dein Ergebnis IMMER im JSON-Format zurück mit den folgenden 4 Feldern:
         1. "severity": (Wähle aus: INFO, HIGH, CRITICAL)
         2. "diagnosis": (Was ist die Ursache des Problems auf Deutsch? Kurz und prägnant.)
         3. "recommendation": (Konkrete Schritte zur Fehlerbehebung auf Deutsch.)
-        
+        4. "confidence": (Float 0.0–1.0: Wie sicher bist du dir bei dieser Diagnose? 1.0 = sehr sicher, 0.0 = sehr unsicher.)
+
         Wichtig: Gib NUR das JSON-Objekt ohne weiteren Text oder Markdown-Formatierung zurück.
         """
 
@@ -94,43 +95,50 @@ class AIDiagnosticService:
             return {
                 "severity": "CRITICAL",
                 "diagnosis": "Out-of-Memory-Fehler: Arbeitsspeicher erschöpft, Prozess wurde beendet.",
-                "recommendation": "1. OOM-Killer-Logs prüfen: dmesg | grep -i oom. 2. Speicher-hungrige Prozesse identifizieren. 3. Swap erweitern oder RAM aufrüsten."
+                "recommendation": "1. OOM-Killer-Logs prüfen: dmesg | grep -i oom. 2. Speicher-hungrige Prozesse identifizieren. 3. Swap erweitern oder RAM aufrüsten.",
+                "confidence": 0.95,
             }
         elif "disk space" in log_lower or "storage" in log_lower or "no space left" in log_lower:
             return {
                 "severity": "CRITICAL",
                 "diagnosis": "Speicherplatz auf einer Festplatte oder Partition erschöpft.",
-                "recommendation": "1. Temporäre Dateien löschen. 2. Alte Logs komprimieren/löschen. 3. Mountpunkte prüfen: df -h"
+                "recommendation": "1. Temporäre Dateien löschen. 2. Alte Logs komprimieren/löschen. 3. Mountpunkte prüfen: df -h",
+                "confidence": 0.95,
             }
         elif "crash" in log_lower or "segfault" in log_lower or "core dump" in log_lower:
             return {
                 "severity": "CRITICAL",
                 "diagnosis": "Prozess-Absturz (Crash/Segfault) erkannt.",
-                "recommendation": "1. Core-Dump analysieren. 2. Anwendungs-Log prüfen. 3. Service neustarten und überwachen."
-            }
-        elif "timeout" in log_lower or "connection" in log_lower or "refused" in log_lower:
-            return {
-                "severity": "HIGH",
-                "diagnosis": "Netzwerk-Timeout oder Verbindung zu einem Dienst fehlgeschlagen.",
-                "recommendation": "1. Ping-Test zum Zielhost. 2. Firewall-Regeln prüfen. 3. Zieldienst-Status prüfen."
-            }
-        elif "error" in log_lower or "fail" in log_lower:
-            return {
-                "severity": "HIGH",
-                "diagnosis": "Allgemeiner Fehler oder Komponentenausfall erkannt.",
-                "recommendation": "1. Vollständige Log-Ausgabe prüfen. 2. Service-Status kontrollieren. 3. Neustart erwägen."
+                "recommendation": "1. Core-Dump analysieren. 2. Anwendungs-Log prüfen. 3. Service neustarten und überwachen.",
+                "confidence": 0.90,
             }
         elif "down" in log_lower or "unreachable" in log_lower:
             return {
                 "severity": "CRITICAL",
                 "diagnosis": "System oder Dienst nicht erreichbar.",
-                "recommendation": "1. Ping und Traceroute zum Zielsystem. 2. Interface-Status prüfen. 3. NOC informieren."
+                "recommendation": "1. Ping und Traceroute zum Zielsystem. 2. Interface-Status prüfen. 3. NOC informieren.",
+                "confidence": 0.88,
+            }
+        elif "timeout" in log_lower or "connection" in log_lower or "refused" in log_lower:
+            return {
+                "severity": "HIGH",
+                "diagnosis": "Netzwerk-Timeout oder Verbindung zu einem Dienst fehlgeschlagen.",
+                "recommendation": "1. Ping-Test zum Zielhost. 2. Firewall-Regeln prüfen. 3. Zieldienst-Status prüfen.",
+                "confidence": 0.80,
+            }
+        elif "error" in log_lower or "fail" in log_lower:
+            return {
+                "severity": "HIGH",
+                "diagnosis": "Allgemeiner Fehler oder Komponentenausfall erkannt.",
+                "recommendation": "1. Vollständige Log-Ausgabe prüfen. 2. Service-Status kontrollieren. 3. Neustart erwägen.",
+                "confidence": 0.65,
             }
         else:
             return {
                 "severity": "INFO",
                 "diagnosis": "Die Log-Nachricht zeigt kein kritisches Muster (Mock-Modus).",
-                "recommendation": "Weiterhin beobachten, keine akute Maßnahme erforderlich."
+                "recommendation": "Weiterhin beobachten, keine akute Maßnahme erforderlich.",
+                "confidence": 0.70,
             }
 
 # Für manuelles lokales Testen dieses Moduls
