@@ -23,6 +23,9 @@ class LogEntry(Base):
     recommendation = Column(String, nullable=True)
     confidence = Column(Float, nullable=True)  # KI-Konfidenz 0.0–1.0 (EPIC 2)
 
+    # Lifecycle-Status (EPIC 3): "new" | "acknowledged" | "resolved"
+    status = Column(String, index=True, default="new")
+
 
 class EscalationRule(Base):
     __tablename__ = "escalation_rules"

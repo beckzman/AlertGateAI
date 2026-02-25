@@ -58,8 +58,8 @@
 🔧 **Tasks:**
 *   [x] Alert-Liste mit Filter (Severity, Service, Zeit) — _Spalten- und Seitenleisten-Filter implementiert_
 *   [x] Detailansicht mit KI-Analyse — _Diagnose + Empfehlung direkt in der Tabellenzeile sichtbar_
-*   [ ] Status-Workflow (New → Acknowledged → Resolved) — _kein Status-Feld in DB, kein Lifecycle-UI_
-*   [~] KPI-Boxen (Anzahl Alerts, Critical, High, Info) — _Zählungen vorhanden; Critical% und MTTR fehlen_
+*   [x] Status-Workflow (New → Acknowledged → Resolved) — _`status`-Feld in DB; PATCH `/logs/{id}/status`; klickbarer Badge im Dashboard (NEU→ACK→GELÖST)_
+*   [~] KPI-Boxen (Anzahl Alerts, Critical, High, Info) — _Critical% unter dem Zählwert ergänzt; MTTR nicht umgesetzt (erfordert resolved_at-Timestamp)_
 *   [ ] Authentifizierung (JWT / OAuth) — _alle Endpoints öffentlich, kein Login_
 
 ---

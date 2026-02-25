@@ -23,6 +23,7 @@ interface LogEntry {
     diagnosis: string;
     recommendation?: string;
     confidence?: number | null;
+    status?: string;
     timestamp: string;
     count?: number; // Neu für Gruppierung
 }
@@ -90,8 +91,23 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     const [colDatum, setColDatum] = useState('')
     const [colSource, setColSource] = useState('')
     const [colSeverity, setColSeverity] = useState('')
+    const [colStatus, setColStatus] = useState('')
     const [colMessage, setColMessage] = useState('')
     const [colDiagnosis, setColDiagnosis] = useState('')
+
+    const STATUS_CYCLE: Record<string, string> = { new: 'acknowledged', acknowledged: 'resolved', resolved: 'new' }
+    const STATUS_LABEL: Record<string, string> = { new: 'NEU', acknowledged: 'ACK', resolved: 'GELÖST' }
+    const STATUS_CLASS: Record<string, string> = {
+        new:          'bg-slate-700/60 text-slate-300 hover:bg-slate-600',
+        acknowledged: 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30',
+        resolved:     'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30',
+    }
+
+    const updateStatus = async (logId: number, current: string) => {
+        const next = STATUS_CYCLE[current] ?? 'new'
+        await fetch(`${apiUrl}/logs/${logId}/status?status=${next}`, { method: 'PATCH' })
+        setLogs(prev => prev.map(l => l.id === logId ? { ...l, status: next } : l))
+    }
 
     const groupedLogs = groupBySource ? logs.reduce((acc: (LogEntry & { count?: number })[], log) => {
         const key = `${log.source_ip}-${log.diagnosis}`
@@ -112,6 +128,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         if (colDatum && !datum.includes(colDatum)) return false
         if (colSource && !log.source_ip.toLowerCase().includes(colSource.toLowerCase())) return false
         if (colSeverity && log.severity !== colSeverity) return false
+        if (colStatus && (log.status ?? 'new') !== colStatus) return false
         if (colMessage && !log.message.toLowerCase().includes(colMessage.toLowerCase())) return false
         if (colDiagnosis && !(log.diagnosis ?? '').toLowerCase().includes(colDiagnosis.toLowerCase())) return false
         return true
@@ -187,6 +204,11 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                             <div>
                                 <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Critical</p>
                                 <p className="text-3xl font-bold text-red-400">{stats?.severity?.CRITICAL || 0}</p>
+                                {(() => {
+                                    const total = (stats?.severity?.CRITICAL || 0) + (stats?.severity?.HIGH || 0) + (stats?.severity?.INFO || 0)
+                                    const pct = total > 0 ? Math.round((stats?.severity?.CRITICAL || 0) / total * 100) : 0
+                                    return <p className="text-[11px] text-red-400/60 mt-1">{pct}% der Events (24h)</p>
+                                })()}
                             </div>
                             <div className="p-2 bg-red-500/10 rounded-lg">
                                 <AlertCircle className="w-5 h-5 text-red-500" />
@@ -311,7 +333,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                         </div>
 
                         <button
-                            onClick={() => { setSeverityFilter(''); setSearchFilter(''); setGroupBySource(false); }}
+                            onClick={() => { setSeverityFilter(''); setSearchFilter(''); setGroupBySource(false); setColStatus(''); }}
                             className="w-full py-2 text-xs font-semibold text-slate-400 hover:text-white transition-colors"
                         >
                             Filter zurücksetzen
@@ -336,6 +358,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                                 <th className="px-4 pt-4 pb-1 font-semibold">Uhrzeit</th>
                                 <th className="px-4 pt-4 pb-1 font-semibold">Source</th>
                                 <th className="px-4 pt-4 pb-1 font-semibold">Severity</th>
+                                <th className="px-4 pt-4 pb-1 font-semibold">Status</th>
                                 <th className="px-4 pt-4 pb-1 font-semibold">Log Message</th>
                                 <th className="px-4 pt-4 pb-1 font-semibold text-blue-400">KI-Diagnose</th>
                             </tr>
@@ -370,6 +393,18 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                                         <option value="CRITICAL">Critical</option>
                                         <option value="HIGH">High</option>
                                         <option value="INFO">Info</option>
+                                    </select>
+                                </th>
+                                <th className="px-4 pb-3 pt-1">
+                                    <select
+                                        value={colStatus}
+                                        onChange={e => setColStatus(e.target.value)}
+                                        className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 font-normal normal-case appearance-none"
+                                    >
+                                        <option value="">Alle</option>
+                                        <option value="new">Neu</option>
+                                        <option value="acknowledged">ACK</option>
+                                        <option value="resolved">Gelöst</option>
                                     </select>
                                 </th>
                                 <th className="px-4 pb-3 pt-1">
@@ -416,6 +451,15 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                                             {log.severity}
                                         </Badge>
                                     </td>
+                                    <td className="px-4 py-4">
+                                        <button
+                                            onClick={() => updateStatus(log.id, log.status ?? 'new')}
+                                            className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${STATUS_CLASS[log.status ?? 'new'] ?? STATUS_CLASS.new}`}
+                                            title="Klicken zum Wechseln"
+                                        >
+                                            {STATUS_LABEL[log.status ?? 'new'] ?? 'NEU'}
+                                        </button>
+                                    </td>
                                     <td className="px-4 py-4 font-mono text-[10px] text-slate-500 break-words min-w-[200px] max-w-sm whitespace-pre-wrap">
                                         {log.message}
                                     </td>
@@ -453,7 +497,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                             ))}
                             {displayedLogs.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center">
+                                    <td colSpan={7} className="px-6 py-12 text-center">
                                         <div className="flex flex-col items-center gap-2 text-slate-600">
                                             <Search className="w-8 h-8 opacity-20" />
                                             <p>Keine Events mit diesen Filtern gefunden.</p>

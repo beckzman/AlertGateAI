@@ -119,6 +119,7 @@ def _run_migrations():
             ("tags",         "VARCHAR"),
             ("fingerprint",  "VARCHAR"),
             ("confidence",   "REAL"),
+            ("status",       "VARCHAR DEFAULT 'new'"),
         ]
         for col_name, col_type in new_columns:
             if col_name not in existing_cols:
@@ -178,6 +179,7 @@ def get_logs(
         "diagnosis": log.diagnosis,
         "recommendation": log.recommendation,
         "confidence": log.confidence,
+        "status": log.status or "new",
     } for log in logs]
 
 @app.get("/stats")
@@ -302,6 +304,19 @@ def update_escalation_rule(severity: str, req: EscalationRuleRequest, db: Sessio
     rule.webhook_url = req.webhook_url
     db.commit()
     return {"status": "ok", "severity": severity}
+
+
+@app.patch("/logs/{log_id}/status")
+def update_log_status(log_id: int, status: str, db: Session = Depends(get_db)):
+    """Status eines Log-Eintrags ändern (new → acknowledged → resolved)."""
+    if status not in ("new", "acknowledged", "resolved"):
+        raise HTTPException(status_code=422, detail="Status muss new, acknowledged oder resolved sein.")
+    log = db.query(LogEntry).filter(LogEntry.id == log_id).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="Log-Eintrag nicht gefunden.")
+    log.status = status
+    db.commit()
+    return {"id": log_id, "status": status}
 
 
 @app.post("/ingest", status_code=202)
