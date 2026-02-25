@@ -16,6 +16,7 @@ from models.log_model import Base, LogEntry, NotificationHistory, EscalationRule
 from ingestion.syslog_receiver import start_syslog_server
 from ingestion.imap_receiver import IMAPReceiver
 from diagnosis.analyzer import AIDiagnosticService
+from diagnosis.rca import RCAService
 from alerting.service import AlertingService
 from ingestion.pipeline import EventPipeline
 
@@ -64,9 +65,13 @@ async def lifespan(app: FastAPI):
     alerter.set_analyzer(analyzer)  # Verknüpfung für KI-Zusammenfassungen
     pipeline = EventPipeline(analyzer, alerter)
 
+    # RCA-Service initialisieren (EPIC 4)
+    rca_service = RCAService(analyzer)
+
     # Services in app.state speichern für Endpoint-Zugriff
     app.state.alerter = alerter
     app.state.pipeline = pipeline
+    app.state.rca_service = rca_service
     
     # 0. Pipeline Worker starten (arbeitet die Warteschlange ab)
     task1 = loop.create_task(pipeline.start_worker())
@@ -115,11 +120,16 @@ def _run_migrations():
             row[1] for row in conn.execute(text("PRAGMA table_info(log_entries)")).fetchall()
         }
         new_columns = [
-            ("service_name", "VARCHAR"),
-            ("tags",         "VARCHAR"),
-            ("fingerprint",  "VARCHAR"),
-            ("confidence",   "REAL"),
-            ("status",       "VARCHAR DEFAULT 'new'"),
+            ("service_name",    "VARCHAR"),
+            ("tags",            "VARCHAR"),
+            ("fingerprint",     "VARCHAR"),
+            ("confidence",      "REAL"),
+            ("status",          "VARCHAR DEFAULT 'new'"),
+            # EPIC 4 – Smart Triage
+            ("cluster_id",      "VARCHAR"),
+            ("correlation_id",  "VARCHAR"),
+            ("rca_hypothesis",  "TEXT"),
+            ("feedback",        "VARCHAR"),
         ]
         for col_name, col_type in new_columns:
             if col_name not in existing_cols:
@@ -180,6 +190,10 @@ def get_logs(
         "recommendation": log.recommendation,
         "confidence": log.confidence,
         "status": log.status or "new",
+        "service_name": log.service_name,
+        "cluster_id": log.cluster_id,
+        "correlation_id": log.correlation_id,
+        "feedback": log.feedback,
     } for log in logs]
 
 @app.get("/stats")
@@ -317,6 +331,82 @@ def update_log_status(log_id: int, status: str, db: Session = Depends(get_db)):
     log.status = status
     db.commit()
     return {"id": log_id, "status": status}
+
+
+class FeedbackRequest(BaseModel):
+    feedback: str  # "valid" | "false_positive"
+
+
+@app.get("/logs/correlation/{correlation_id}")
+def get_correlated_events(correlation_id: str, db: Session = Depends(get_db)):
+    """Alert-Story: alle Events einer Korrelationsgruppe, chronologisch sortiert (EPIC 4)."""
+    logs = (
+        db.query(LogEntry)
+        .filter(LogEntry.correlation_id == correlation_id)
+        .order_by(LogEntry.timestamp.asc())
+        .all()
+    )
+    if not logs:
+        raise HTTPException(status_code=404, detail="Korrelationsgruppe nicht gefunden.")
+    return [{
+        "id": log.id,
+        "timestamp": log.timestamp,
+        "source_ip": log.source_ip,
+        "severity": log.severity,
+        "message": log.message,
+        "diagnosis": log.diagnosis,
+        "recommendation": log.recommendation,
+        "confidence": log.confidence,
+        "service_name": log.service_name,
+        "cluster_id": log.cluster_id,
+        "rca_hypothesis": log.rca_hypothesis,
+    } for log in logs]
+
+
+@app.post("/logs/correlation/{correlation_id}/rca")
+async def trigger_rca(correlation_id: str, request: Request, db: Session = Depends(get_db)):
+    """Root-Cause-Hypothese für alle Events einer Korrelationsgruppe generieren (EPIC 4)."""
+    logs = (
+        db.query(LogEntry)
+        .filter(LogEntry.correlation_id == correlation_id)
+        .order_by(LogEntry.timestamp.asc())
+        .all()
+    )
+    if not logs:
+        raise HTTPException(status_code=404, detail="Korrelationsgruppe nicht gefunden.")
+
+    rca_service: RCAService = request.app.state.rca_service
+    events = [{
+        "source_ip": log.source_ip,
+        "service_name": log.service_name,
+        "message": log.message,
+        "diagnosis": log.diagnosis,
+        "severity": log.severity,
+        "timestamp": str(log.timestamp),
+    } for log in logs]
+
+    result = await rca_service.generate_hypothesis(events)
+
+    # Hypothese auf dem schwerwiegendsten Event persistieren
+    severity_rank = {"CRITICAL": 2, "HIGH": 1, "INFO": 0}
+    target = sorted(logs, key=lambda l: severity_rank.get(l.severity or "INFO", 0), reverse=True)[0]
+    target.rca_hypothesis = result.get("hypothesis", "")
+    db.commit()
+
+    return {"correlation_id": correlation_id, "event_count": len(logs), **result}
+
+
+@app.patch("/logs/{log_id}/feedback")
+def update_feedback(log_id: int, req: FeedbackRequest, db: Session = Depends(get_db)):
+    """On-Call-Feedback für einen Log-Eintrag speichern (EPIC 4)."""
+    if req.feedback not in ("valid", "false_positive"):
+        raise HTTPException(status_code=422, detail="feedback muss 'valid' oder 'false_positive' sein.")
+    log = db.query(LogEntry).filter(LogEntry.id == log_id).first()
+    if not log:
+        raise HTTPException(status_code=404, detail="Log-Eintrag nicht gefunden.")
+    log.feedback = req.feedback
+    db.commit()
+    return {"id": log_id, "feedback": req.feedback}
 
 
 @app.post("/ingest", status_code=202)

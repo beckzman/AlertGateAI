@@ -73,11 +73,11 @@
 ### EPIC 4 – Smart Triage Engine
 
 🔧 **Tasks:**
-*   [ ] Clustering ähnlicher Alerts — _nicht vorhanden; Frontend-Gruppierung (source+diagnosis) ist kein echtes Clustering_
-*   [ ] Correlation Engine (Zeit + Service + Host) — _nicht vorhanden_
-*   [~] Root Cause Hypothesen generieren — _KI-Diagnose liefert Ursachen-Text, aber kein dediziertes RCA-Modul_
-*   [ ] Alert-Story (Timeline-Rekonstruktion) — _Frequenz-Chart vorhanden, aber kein Event-Zusammenhang_
-*   [ ] Feedback-System für On-Call-Team — _nicht vorhanden_
+*   [x] Clustering ähnlicher Alerts — _SHA256-basierter cluster_id (severity + normalisierte Nachricht, volatile Tokens entfernt); clickable Badge im Dashboard filtert nach Cluster_
+*   [x] Correlation Engine (Zeit + Service + Host) — _UUID correlation_id: Events von selber Source+Service im 15-Min-Fenster teilen eine ID; GET `/logs/correlation/{id}` liefert Alert-Story_
+*   [x] Root Cause Hypothesen generieren — _`RCAService` (`diagnosis/rca.py`): POST `/logs/correlation/{id}/rca` analysiert alle korrelierten Events per KI (mock + Gemini/local); persistiert Hypothese in DB_
+*   [x] Alert-Story (Timeline-Rekonstruktion) — _`TriageModal` im Dashboard: Klick auf Link2-Icon öffnet chronologische Event-Timeline + RCA-Button_
+*   [x] Feedback-System für On-Call-Team — _ThumbsUp/ThumbsDown pro Zeile; PATCH `/logs/{id}/feedback` speichert "valid"/"false_positive" in DB_
 
 ---
 

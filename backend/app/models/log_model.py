@@ -26,6 +26,12 @@ class LogEntry(Base):
     # Lifecycle-Status (EPIC 3): "new" | "acknowledged" | "resolved"
     status = Column(String, index=True, default="new")
 
+    # Smart Triage (EPIC 4)
+    cluster_id     = Column(String, nullable=True, index=True)  # SHA256[:16] ähnlicher Events
+    correlation_id = Column(String, nullable=True, index=True)  # UUID4 für korrelierte Events (15-Min-Fenster)
+    rca_hypothesis = Column(String, nullable=True)               # KI Root-Cause-Hypothese (on-demand)
+    feedback       = Column(String, nullable=True)               # "valid" | "false_positive"
+
 
 class EscalationRule(Base):
     __tablename__ = "escalation_rules"

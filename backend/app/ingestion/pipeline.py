@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import logging
 import re
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -15,6 +16,18 @@ logger = logging.getLogger(__name__)
 
 # Zeitfenster für Hash-basierte Deduplizierung (Sekunden)
 DEDUP_WINDOW_SECONDS = 60
+
+# Zeitfenster für Korrelation gleichartiger Events (EPIC 4)
+CORRELATION_WINDOW_MINUTES = 15
+
+# Normalisierungs-Regex für Cluster-IDs: entfernt volatile Tokens (IPs, Timestamps, Zahlen, UUIDs)
+_NORMALIZE_TOKENS = re.compile(
+    r"\b(?:\d{1,3}(?:\.\d{1,3}){3}"                              # IPv4
+    r"|(?:\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})"              # ISO-Timestamps
+    r"|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"  # UUIDs
+    r"|\d+)\b",
+    re.IGNORECASE,
+)
 
 
 # [Aufgabe 1] Erweitertes NormalizedEvent-Schema (EPIC 1)
@@ -65,6 +78,31 @@ class EventPipeline:
 
         self._dedup_cache[fingerprint] = now
         return False
+
+    def _compute_cluster_id(self, severity: str, message: str) -> str:
+        """Stabiler Cluster-Key: normalisiert volatile Tokens, hasht severity|nachricht (EPIC 4)."""
+        normalized = _NORMALIZE_TOKENS.sub("X", message.lower().strip())[:120]
+        content = f"{severity}|{normalized}"
+        return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+    def _find_or_create_correlation_id(self, db, source_ip: str, service_name: Optional[str]) -> str:
+        """Gibt eine bestehende correlation_id zurück wenn ein verwandtes Event im 15-Min-Fenster
+        existiert (selbe Source-IP + Service), sonst eine neue UUID4 (EPIC 4)."""
+        window_start = datetime.now(timezone.utc) - timedelta(minutes=CORRELATION_WINDOW_MINUTES)
+        query = (
+            db.query(LogEntry.correlation_id)
+            .filter(
+                LogEntry.source_ip == source_ip,
+                LogEntry.timestamp >= window_start,
+                LogEntry.correlation_id.isnot(None),
+            )
+        )
+        if service_name:
+            query = query.filter(LogEntry.service_name == service_name)
+        existing = query.order_by(LogEntry.timestamp.asc()).first()
+        if existing and existing.correlation_id:
+            return existing.correlation_id
+        return str(uuid.uuid4())
 
     async def ingest(
         self,
@@ -150,20 +188,27 @@ class EventPipeline:
             if confidence is not None:
                 confidence = max(0.0, min(1.0, confidence))  # Clampen auf [0.0, 1.0]
 
+            # EPIC 4: Cluster- und Korrelations-IDs berechnen
+            severity = diagnosis_result.get("severity", event.severity or "INFO")
+            cluster_id = self._compute_cluster_id(severity, event.raw_message)
+            correlation_id = self._find_or_create_correlation_id(db, event.source, event.service_name)
+
             log_entry = LogEntry(
                 source_ip=event.source,
                 message=event.raw_message,
-                severity=event.severity,
+                severity=severity,
                 diagnosis=diagnosis_result.get("diagnosis", ""),
                 recommendation=diagnosis_result.get("recommendation", ""),
                 confidence=confidence,
                 service_name=event.service_name,
                 tags=",".join(event.tags) if event.tags else None,
                 fingerprint=event.fingerprint,
+                cluster_id=cluster_id,
+                correlation_id=correlation_id,
             )
             db.add(log_entry)
             db.commit()
-            logger.debug(f"💾 Log von {event.source} in SQLite gespeichert.")
+            logger.debug(f"💾 Log von {event.source} in SQLite gespeichert. cluster={cluster_id[:8]} corr={correlation_id[:8]}")
         except Exception as e:
             logger.error(f"Fehler beim Speichern in der Datenbank: {e}")
         finally:
