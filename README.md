@@ -1,48 +1,89 @@
 # AlertGateAI 🛡️🤖
 
-AlertGateAI ist ein intelligentes AIOps-Zentrum zur Überwachung deiner IT-Infrastruktur. Es empfängt Alarme aus verschiedenen Quellen, analysiert diese in Echtzeit mit modernster KI (Gemini oder lokale LLMs) und eskaliert kritische Vorfälle automatisch an das On-Call Team.
+AlertGateAI ist ein intelligentes AIOps-Zentrum zur Überwachung deiner IT-Infrastruktur. Es empfängt Alarme aus verschiedenen Quellen, analysiert diese in Echtzeit mit modernster KI (Gemini oder lokale LLMs), korreliert verwandte Vorfälle automatisch und eskaliert kritische Events an das On-Call Team.
 
 ## 🚀 Kern-Features
 
-*   **Multi-Source Ingestion**: Empfang von Alarmen via Syslog (UDP, Port 5140) und E-Mail (IMAP Polling).
-*   **KI-powered Diagnose**: Automatische Analyse von Log-Nachrichten. Erkennt Fehlerursachen und gibt konkrete Handlungsempfehlungen.
-*   **Smart Alerting**: 
-    *   Deduplizierung von "Alert-Storms" (Aggregation über einen 3-Minuten-Zeitfenster).
-    *   KI-Zusammenfassung von gebündelten Alarmen.
-    *   Eskalation via E-Mail (SMTP) und optional Twilio (SMS/Voice).
-*   **Modern Dashboard**: Echtzeit-Visualisierung der Events und Diagnosen in einem modernen React-Dashboard.
-*   **Flexible KI-Backends**: Support für Google Gemini API oder lokale, OpenAI-kompatible KI-Server (LM Studio, Ollama).
+### Alert Ingestion
+- **Multi-Source**: Syslog (UDP, Port 5140), E-Mail (IMAP Polling), REST API (`POST /ingest`)
+- **Deduplizierung**: SHA256-Fingerprint + 60s In-Memory-Cache verhindert Alert-Storms
+- **Rate Limiting**: 100 Requests/Minute pro IP auf dem `/ingest` Endpoint
+- **Schema-Validierung**: Pydantic-Modell mit `source`, `message`, `service_name`, `tags`, `severity_hint`
+
+### KI-Diagnose
+- **Automatische Analyse**: Erkennt Fehlerursachen und gibt konkrete Handlungsempfehlungen
+- **Confidence Score**: KI-Konfidenz (0–100%) wird als farbiger Progress-Bar im Dashboard angezeigt
+- **Fallback-Modus**: Regelbasierte Mock-Diagnose wenn kein API-Key konfiguriert
+- **Flexible Backends**: Google Gemini API oder lokale, OpenAI-kompatible KI-Server (LM Studio, Ollama)
+
+### Smart Triage Engine
+- **Clustering**: Ähnliche Events werden anhand normalisierter Nachrichten geclustert (`cluster_id`). Clickbarer Badge im Dashboard filtert nach Cluster.
+- **Correlation Engine**: Events von derselben Source/Service innerhalb von 15 Minuten erhalten dieselbe `correlation_id`
+- **Alert-Story**: Klick auf das 🔗-Icon öffnet ein Modal mit der chronologischen Event-Timeline eines Incidents
+- **Root Cause Analysis**: KI-gestützte Hypothesen-Generierung für korrelierte Incidents via `POST /logs/correlation/{id}/rca`
+- **On-Call Feedback**: ThumbsUp/Down-Buttons markieren Events als korrekt diagnostiziert oder als False Positive
+
+### Alerting & Eskalation
+- **Smart Alerting**: Aggregation über 3-Minuten-Zeitfenster mit KI-Zusammenfassung
+- **Eskalationsmatrix**: Konfigurierbare Regeln pro Severity (INFO/HIGH/CRITICAL) mit E-Mail, SMS und Webhook
+- **Multi-Channel**: SMTP (E-Mail) + Twilio (SMS), Mock-Modus wenn nicht konfiguriert
+
+### Dashboard
+- **Echtzeit-Visualisierung**: Alert-Tabelle mit Live-Polling (10s Intervall)
+- **Filterung**: API-seitige Filter (Severity, IP) + client-seitige Spalten-Filter (Datum, Source, Status, Cluster, Diagnose)
+- **Status-Workflow**: Klickbarer Badge pro Event: NEU → ACK → GELÖST
+- **KPI-Karten**: Total Events, Critical (inkl. %-Anteil), High, Info
+- **Alert-Frequenz-Chart**: Stacked Bar Chart nach Severity, letzte 24h
+- **TriageModal**: Alert-Story + RCA-Analyse direkt im Dashboard
 
 ---
 
 ## 🏗️ Architektur & Datenfluss
 
-1.  **Ingestion**: Server senden Logs via Syslog oder E-Mail an AlertGateAI.
-2.  **Pipeline**: Events werden normalisiert und nach relevanten Keywords gefiltert.
-3.  **Diagnosis**: Relevante Events werden an die KI gesendet. Diese liefert `Severity`, `Diagnosis` und `Recommendation`.
-4.  **Database**: Alle Events und Diagnosen werden in einer SQLite-Datenbank persistiert.
-5.  **Alerter**: Bei `CRITICAL` oder `HIGH` Severity wird die Eskalationskette gestartet.
-6.  **Frontend**: Das Dashboard pollt das Backend und zeigt den aktuellen Status live an.
+```
+Syslog / E-Mail / REST API
+         │
+         ▼
+  [ EventPipeline ]
+  ├── Dedup (SHA256 Fingerprint, 60s TTL)
+  ├── Keyword-Vorfilter (error/fail/timeout/oom/...)
+  ├── Cluster-ID berechnen (SHA256 normalisierter Nachricht)
+  └── Correlation-ID vergeben (15-Min-Fenster, selbe Source+Service)
+         │
+         ▼
+  [ AIDiagnosticService ]    ←── Gemini / LM Studio / Mock
+  └── {severity, diagnosis, recommendation, confidence}
+         │
+         ▼
+  [ SQLite DB ] ← log_entries, escalation_rules, notification_history
+         │
+         ├──► [ AlertingService ] → E-Mail / SMS / Mock
+         └──► [ RCAService ]       → Root Cause Hypothesen (on-demand)
+         │
+         ▼
+  [ React Dashboard ] ← pollt Backend alle 10s
+```
 
 ---
 
 ## 🐳 Deployment mit Docker (Empfohlen)
 
-Das System ist für den Betrieb mit Docker vorkonfiguriert und ideal für das Deployment auf einem Linux-Server.
-
 ### 1. Repository klonen
 ```bash
 git clone https://github.com/beckzman/AlertGateAI.git
-cd AlertGateAI/aiops-bot
+cd AlertGateAI
 ```
 
 ### 2. Konfiguration
-Kopiere die Beispiel-Konfiguration und trage deine API-Keys ein:
 ```bash
 cp backend/.env.example backend/.env
+# .env editieren: API-Keys, SMTP, Twilio, On-Call Kontakte eintragen
 ```
-**Wichtig für Docker**: In der `.env` muss der Datenbankpfad auf das persistente Volume zeigen:
-`DATABASE_URL=sqlite:////app/data/aiops.db`
+
+**Wichtig für Docker**: Datenbankpfad auf persistentes Volume setzen:
+```
+DATABASE_URL=sqlite:////app/data/aiops.db
+```
 
 ### 3. System starten
 ```bash
@@ -50,56 +91,95 @@ docker-compose up -d --build
 ```
 
 ### Ports & Zugriff
-*   **Dashboard**: `http://<deine-ip>` (Port 80)
-*   **Backend API**: `http://<deine-ip>:8000`
-*   **Syslog Receiver**: `udp://<deine-ip>:5140`
+| Dienst | URL |
+| :--- | :--- |
+| Dashboard | `http://<ip>` (Port 80) |
+| Backend API | `http://<ip>:8000` |
+| API Docs | `http://<ip>:8000/docs` |
+| Syslog Receiver | `udp://<ip>:5140` |
 
 ---
 
-## 💻 Lokale Entwicklung (Windows/Mac/Linux)
-
-Falls du das System ohne Docker lokal starten möchtest:
+## 💻 Lokale Entwicklung
 
 ### Backend (Python/FastAPI)
-1.  Venv erstellen: `python -m venv venv`
-2.  Aktivieren & Installieren: `pip install -r backend/requirements.txt`
-3.  Starten (Windows):
-    ```powershell
-    cd backend
-    .\start.ps1
-    ```
+```bash
+python -m venv venv && source venv/bin/activate
+pip install -r backend/requirements.txt
+cd backend && uvicorn app.main:app --reload --port 8000
+```
 
 ### Frontend (React/Vite)
-1.  Navigate: `cd frontend`
-2.  Installieren: `npm install`
-3.  Starten: `npm run dev`
+```bash
+cd frontend && npm install && npm run dev
+```
 
 ---
 
 ## 🧪 System testen
-Um einen Test-Alarm an das System zu senden, kannst du das mitgelieferte PowerShell-Skript nutzen (aus dem Root-Verzeichnis):
 
-```powershell
-.\send_test_syslog.ps1 -Message "CRITICAL: No space left on device /dev/sda1" -Source "192.168.1.50"
-```
-
-Oder via Bash (Linux/Mac):
+### Syslog (UDP)
 ```bash
 echo "ERROR: Data integrity check failed on DB-01" | nc -u -w0 localhost 5140
 ```
+
+### REST API
+```bash
+# Einzelnen Alert ingesten
+curl -X POST localhost:8000/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"source":"10.0.0.1","message":"connection refused to postgres","service_name":"api"}'
+
+# Korrelierten Alert (innerhalb 15 Min nach obigem Aufruf → selbe correlation_id)
+curl -X POST localhost:8000/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"source":"10.0.0.1","message":"timeout waiting for postgres response","service_name":"api"}'
+
+# Alert-Story abrufen
+curl localhost:8000/logs | python3 -m json.tool | grep correlation_id
+
+# RCA generieren (correlation_id aus vorherigem Aufruf einsetzen)
+curl -X POST localhost:8000/logs/correlation/<correlation_id>/rca
+```
+
+---
+
+## 📡 API Endpoints
+
+| Method | Endpoint | Beschreibung |
+| :--- | :--- | :--- |
+| `GET` | `/logs` | Events abrufen (Filter: severity, source_ip, skip, limit) |
+| `POST` | `/ingest` | Alert ingesten (Rate: 100/min/IP) |
+| `PATCH` | `/logs/{id}/status` | Status ändern (new/acknowledged/resolved) |
+| `PATCH` | `/logs/{id}/feedback` | Feedback setzen (valid/false_positive) |
+| `GET` | `/logs/correlation/{id}` | Alert-Story Timeline |
+| `POST` | `/logs/correlation/{id}/rca` | Root Cause Analyse triggern |
+| `GET` | `/stats` | Severity-Verteilung + 24h Timeline |
+| `GET` | `/escalation` | Eskalationsregeln abrufen |
+| `PUT` | `/escalation/{severity}` | Eskalationsregel aktualisieren |
+| `POST` | `/notify/send` | Manuelle E-Mail senden |
+| `GET` | `/notify/history` | Benachrichtigungs-Verlauf |
 
 ---
 
 ## 🛠️ Konfigurations-Parameter (`.env`)
 
-| Variable | Beschreibung |
-| :--- | :--- |
-| `AI_PROVIDER` | `gemini` oder `local` |
-| `GOOGLE_API_KEY` | Dein Google Gemini API Key |
-| `LOCAL_LLM_URL` | API-Endpunkt für lokale KI (z.B. LM Studio) |
-| `SMTP_SERVER` | SMTP Server für E-Mail Alarme |
-| `TWILIO_SID` | Twilio Account SID für SMS/Voice |
-| `ON_CALL_EMAIL` | E-Mail Adresse des Bereitschaftsdienstes |
+| Variable | Beschreibung | Standard |
+| :--- | :--- | :--- |
+| `AI_PROVIDER` | `gemini` oder `local` | `gemini` |
+| `GOOGLE_API_KEY` | Google Gemini API Key | — |
+| `LOCAL_LLM_URL` | OpenAI-kompatibler Endpunkt | `http://localhost:1234/v1` |
+| `LOCAL_LLM_MODEL` | Modellname für lokale KI | — |
+| `DATABASE_URL` | SQLAlchemy DB-URL | `sqlite:///./aiops.db` |
+| `SMTP_SERVER` | SMTP Server | — |
+| `SMTP_PORT` | SMTP Port | `587` |
+| `SMTP_USER` | SMTP Benutzername | — |
+| `SMTP_PASSWORD` | SMTP Passwort | — |
+| `TWILIO_SID` | Twilio Account SID | — |
+| `TWILIO_AUTH_TOKEN` | Twilio Auth Token | — |
+| `TWILIO_FROM` | Twilio Absender-Nummer | — |
+| `ON_CALL_EMAIL` | E-Mail des Bereitschaftsdienstes | `oncall@mycompany.com` |
+| `ON_CALL_PHONE` | Telefon des Bereitschaftsdienstes | `+49123456789` |
 
 ---
 
