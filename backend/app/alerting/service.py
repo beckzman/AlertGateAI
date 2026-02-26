@@ -40,6 +40,20 @@ class AlertingService:
     def set_analyzer(self, analyzer):
         self.analyzer = analyzer
 
+    def reload_from_settings(self):
+        """Liest alle Verbindungsparameter aus dem settings-Singleton neu ein (nach Web-UI-Update)."""
+        self.smtp_server   = settings.SMTP_SERVER
+        self.smtp_port     = settings.SMTP_PORT
+        self.smtp_user     = settings.SMTP_USER
+        self.smtp_password = settings.SMTP_PASSWORD
+        self.smtp_from     = settings.SMTP_FROM_EMAIL
+        self.twilio_sid    = settings.TWILIO_ACCOUNT_SID
+        self.twilio_token  = settings.TWILIO_AUTH_TOKEN
+        self.twilio_from   = settings.TWILIO_FROM_NUMBER
+        self.on_call_email = settings.ON_CALL_EMAIL
+        self.on_call_phone = settings.ON_CALL_PHONE
+        logger.info("AlertingService: Konfiguration neu geladen.")
+
     # ------------------------------------------------------------------ #
     # Öffentliche Hilfsmethoden für Kanalstatus (für /notify/channels)    #
     # ------------------------------------------------------------------ #

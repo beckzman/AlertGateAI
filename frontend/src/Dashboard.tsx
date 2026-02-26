@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Server, Activity, AlertTriangle, CheckCircle2, AlertCircle, Search, Filter, RefreshCw, Bell, Settings, ThumbsUp, ThumbsDown, Link2, X } from 'lucide-react'
+import { Server, Activity, AlertTriangle, CheckCircle2, AlertCircle, Search, Filter, RefreshCw, Bell, Settings, SlidersHorizontal, ThumbsUp, ThumbsDown, Link2, X } from 'lucide-react'
 import type { Page } from './App'
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/Card'
 import { Badge } from './components/ui/Badge'
@@ -299,6 +299,13 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                     >
                         <Settings className="w-4 h-4" />
                         <span>Alarmierung</span>
+                    </button>
+                    <button
+                        onClick={() => onNavigate('settings')}
+                        className="flex items-center gap-2 px-3 py-2 bg-slate-900/50 hover:bg-slate-800 rounded-xl border border-slate-800 text-sm text-slate-400 hover:text-white transition-colors"
+                    >
+                        <SlidersHorizontal className="w-4 h-4" />
+                        <span>Einstellungen</span>
                     </button>
                     <button
                         onClick={() => onNavigate('notifications')}

@@ -12,7 +12,7 @@ from typing import List, Optional
 # Eigene Importe
 from core.config import settings
 from core.database import engine, get_db
-from models.log_model import Base, LogEntry, NotificationHistory, EscalationRule
+from models.log_model import Base, LogEntry, NotificationHistory, EscalationRule, AppSetting
 from ingestion.syslog_receiver import start_syslog_server
 from ingestion.imap_receiver import IMAPReceiver
 from diagnosis.analyzer import AIDiagnosticService
@@ -27,6 +27,75 @@ limiter = Limiter(key_func=get_remote_address)
 
 # Globale Variable um Referenzen auf ewige Tasks zu halten
 background_tasks = set()
+
+
+# ---------------------------------------------------------------------------
+# Metadaten aller konfigurierbaren Parameter (Reihenfolge = Darstellung in UI)
+# ---------------------------------------------------------------------------
+SETTINGS_META = [
+    {
+        "group": "llm",
+        "label": "KI / LLM",
+        "restart_required": False,
+        "fields": [
+            {"key": "AI_PROVIDER",     "label": "Provider",         "type": "select",   "options": ["gemini", "local"], "is_secret": False},
+            {"key": "GOOGLE_API_KEY",  "label": "Google API Key",   "type": "password", "is_secret": True},
+            {"key": "LOCAL_LLM_URL",   "label": "Local LLM URL",    "type": "text",     "is_secret": False},
+            {"key": "LOCAL_LLM_MODEL", "label": "Local LLM Model",  "type": "text",     "is_secret": False},
+        ],
+    },
+    {
+        "group": "imap",
+        "label": "IMAP (E-Mail Eingang)",
+        "restart_required": False,
+        "fields": [
+            {"key": "IMAP_SERVER",        "label": "Server",              "type": "text",     "is_secret": False},
+            {"key": "IMAP_PORT",          "label": "Port",                "type": "number",   "is_secret": False},
+            {"key": "IMAP_USER",          "label": "Benutzer",            "type": "text",     "is_secret": False},
+            {"key": "IMAP_PASSWORD",      "label": "Passwort",            "type": "password", "is_secret": True},
+            {"key": "IMAP_POLL_INTERVAL", "label": "Poll-Intervall (s)", "type": "number",   "is_secret": False},
+        ],
+    },
+    {
+        "group": "smtp",
+        "label": "SMTP (E-Mail Versand)",
+        "restart_required": False,
+        "fields": [
+            {"key": "SMTP_SERVER",     "label": "Server",          "type": "text",     "is_secret": False},
+            {"key": "SMTP_PORT",       "label": "Port",            "type": "number",   "is_secret": False},
+            {"key": "SMTP_USER",       "label": "Benutzer",        "type": "text",     "is_secret": False},
+            {"key": "SMTP_PASSWORD",   "label": "Passwort",        "type": "password", "is_secret": True},
+            {"key": "SMTP_FROM_EMAIL", "label": "Absender-E-Mail", "type": "text",     "is_secret": False},
+        ],
+    },
+    {
+        "group": "oncall",
+        "label": "On-Call",
+        "restart_required": False,
+        "fields": [
+            {"key": "ON_CALL_EMAIL", "label": "On-Call E-Mail",  "type": "text", "is_secret": False},
+            {"key": "ON_CALL_PHONE", "label": "On-Call Telefon", "type": "text", "is_secret": False},
+        ],
+    },
+    {
+        "group": "twilio",
+        "label": "SMS / Twilio",
+        "restart_required": False,
+        "fields": [
+            {"key": "TWILIO_ACCOUNT_SID",  "label": "Account SID",  "type": "text",     "is_secret": False},
+            {"key": "TWILIO_AUTH_TOKEN",   "label": "Auth Token",    "type": "password", "is_secret": True},
+            {"key": "TWILIO_FROM_NUMBER",  "label": "Von-Nummer (+E164)", "type": "text", "is_secret": False},
+        ],
+    },
+]
+
+# Schneller Lookup: key → is_secret
+_SECRET_KEYS = {f["key"] for g in SETTINGS_META for f in g["fields"] if f["is_secret"]}
+
+
+def _current_value(key: str) -> str:
+    """Gibt den aktuellen Wert eines Settings-Keys aus dem settings-Singleton zurück."""
+    return str(getattr(settings, key, "") or "")
 
 
 class AlertIngestRequest(BaseModel):
@@ -90,7 +159,10 @@ async def lifespan(app: FastAPI):
     imap_receiver = IMAPReceiver(pipeline)
     task3 = loop.create_task(imap_receiver.start_polling())
     background_tasks.add(task3)
-    
+    # In app.state ablegen, damit PUT /settings ihn hot-reloaden kann
+    app.state.imap_task = task3
+    app.state.imap_receiver = imap_receiver
+
     print("AIOps Backend gestartet! EventPipeline, Syslog (Port 5140) & IMAP laufen.")
     yield
     print("AIOps Backend wird heruntergefahren.")
@@ -162,6 +234,27 @@ def _seed_escalation_rules():
         db.commit()
 
 _seed_escalation_rules()
+
+
+def _load_settings_from_db():
+    """Überschreibt den settings-Singleton mit in der DB gespeicherten Werten (aus dem Web-UI)."""
+    from sqlalchemy.orm import Session as _Session
+    with _Session(engine) as db:
+        rows = db.query(AppSetting).all()
+        for row in rows:
+            if row.value is not None:
+                # Typen anpassen (PORT und INTERVAL sind int)
+                if row.key in ("SMTP_PORT", "IMAP_PORT", "IMAP_POLL_INTERVAL"):
+                    try:
+                        setattr(settings, row.key, int(row.value))
+                    except ValueError:
+                        pass
+                else:
+                    setattr(settings, row.key, row.value)
+
+
+_load_settings_from_db()
+
 
 @app.get("/")
 def read_root():
@@ -533,6 +626,108 @@ def update_feedback(log_id: int, req: FeedbackRequest, db: Session = Depends(get
     log.feedback = req.feedback
     db.commit()
     return {"id": log_id, "feedback": req.feedback}
+
+
+@app.get("/settings")
+def get_settings(db: Session = Depends(get_db)):
+    """Gibt alle konfigurierbaren Parameter zurück.
+    Geheimnisse (Passwörter, Tokens) werden als '***' maskiert, wenn sie gesetzt sind.
+    """
+    # DB-Werte in einen dict laden
+    db_values = {row.key: row.value for row in db.query(AppSetting).all()}
+
+    result = []
+    for group in SETTINGS_META:
+        fields_out = []
+        for f in group["fields"]:
+            key = f["key"]
+            # Wert: zuerst DB, dann live settings-Singleton
+            raw = db_values.get(key) or _current_value(key)
+            if f["is_secret"]:
+                display = "***" if raw else ""
+            else:
+                display = raw
+            fields_out.append({**f, "value": display})
+        result.append({
+            "group": group["group"],
+            "label": group["label"],
+            "restart_required": group["restart_required"],
+            "fields": fields_out,
+        })
+    return result
+
+
+@app.put("/settings")
+def update_settings(payload: dict, request: Request, db: Session = Depends(get_db)):
+    """Speichert Konfigurationsparameter in der DB und aktualisiert die laufenden Services.
+
+    Sicherheitsregeln:
+    - Leerer String bei einem Secret-Feld → Feld wird NICHT überschrieben (keep existing).
+    - '***' → ebenfalls ignoriert (unveränderter Platzhalterwert aus dem UI).
+    """
+    updated_keys = []
+    needs_restart = set()
+
+    for key, value in payload.items():
+        # Unbekannte Keys ablehnen
+        all_keys = {f["key"] for g in SETTINGS_META for f in g["fields"]}
+        if key not in all_keys:
+            continue
+
+        is_secret = key in _SECRET_KEYS
+        # Geheimnisse: leerer String oder "***" → überspringen
+        if is_secret and (not value or value == "***"):
+            continue
+
+        # DB upsert
+        row = db.query(AppSetting).filter(AppSetting.key == key).first()
+        if row:
+            row.value = str(value)
+        else:
+            db.add(AppSetting(key=key, value=str(value), is_secret=is_secret))
+
+        # settings-Singleton aktualisieren
+        if key in ("SMTP_PORT", "IMAP_PORT", "IMAP_POLL_INTERVAL"):
+            try:
+                setattr(settings, key, int(value))
+            except ValueError:
+                pass
+        else:
+            setattr(settings, key, value)
+
+        updated_keys.append(key)
+
+        # Prüfen ob Neustart nötig
+        for group in SETTINGS_META:
+            if any(f["key"] == key for f in group["fields"]) and group["restart_required"]:
+                needs_restart.add(group["label"])
+
+    db.commit()
+
+    # Live-Reload: Alerting + LLM (immer, kostet nichts)
+    alerter: AlertingService = request.app.state.alerter
+    alerter.reload_from_settings()
+
+    analyzer = request.app.state.pipeline.analyzer
+    analyzer.reload_from_settings()
+
+    # Hot-Reload: IMAP-Task neu starten wenn IMAP-Parameter geändert wurden
+    _IMAP_KEYS = {"IMAP_SERVER", "IMAP_PORT", "IMAP_USER", "IMAP_PASSWORD", "IMAP_POLL_INTERVAL"}
+    if _IMAP_KEYS & set(updated_keys):
+        old_task = getattr(request.app.state, "imap_task", None)
+        if old_task and not old_task.done():
+            old_task.cancel()
+        new_receiver = IMAPReceiver(request.app.state.pipeline)
+        loop = asyncio.get_event_loop()
+        new_task = loop.create_task(new_receiver.start_polling())
+        request.app.state.imap_task = new_task
+        request.app.state.imap_receiver = new_receiver
+
+    return {
+        "status": "ok",
+        "updated": updated_keys,
+        "restart_required": [],  # alles wird live neu geladen
+    }
 
 
 @app.post("/ingest", status_code=202)

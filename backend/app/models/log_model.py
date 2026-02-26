@@ -49,6 +49,15 @@ class EscalationRule(Base):
     webhook_url = Column(String, default="")
 
 
+class AppSetting(Base):
+    """Persistente Konfigurationsparameter (überschreibt .env zur Laufzeit)."""
+    __tablename__ = "app_settings"
+
+    key      = Column(String, primary_key=True)
+    value    = Column(String, nullable=True)
+    is_secret = Column(Boolean, default=False)
+
+
 class NotificationHistory(Base):
     __tablename__ = "notification_history"
 

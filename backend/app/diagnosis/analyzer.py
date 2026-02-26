@@ -32,6 +32,25 @@ class AIDiagnosticService:
             logger.error(f"Unbekannter Provider '{self.provider}'. Nutze Mock-Modus.")
             self.use_mock = True
 
+    def reload_from_settings(self):
+        """Initialisiert KI-Client neu nach Konfigurations-Update über das Web-UI."""
+        self.provider  = settings.AI_PROVIDER
+        self.use_mock  = False
+        if self.provider == "gemini":
+            self.api_key = settings.GOOGLE_API_KEY
+            if not self.api_key:
+                logger.warning("Kein GOOGLE_API_KEY – Mock-Modus aktiv.")
+                self.use_mock = True
+            else:
+                genai.configure(api_key=self.api_key)
+                self.model = genai.GenerativeModel('gemini-1.5-flash')
+        elif self.provider == "local":
+            self.client     = OpenAI(base_url=settings.LOCAL_LLM_URL, api_key="not-needed")
+            self.model_name = settings.LOCAL_LLM_MODEL
+        else:
+            self.use_mock = True
+        logger.info(f"AIDiagnosticService: Konfiguration neu geladen (provider={self.provider}).")
+
     async def analyze_log(self, log_message: str) -> dict:
         """
         Analysiert eine Log-Nachricht asynchron.
