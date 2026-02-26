@@ -658,7 +658,7 @@ def get_settings(db: Session = Depends(get_db)):
 
 
 @app.put("/settings")
-def update_settings(payload: dict, request: Request, db: Session = Depends(get_db)):
+async def update_settings(payload: dict, request: Request, db: Session = Depends(get_db)):
     """Speichert Konfigurationsparameter in der DB und aktualisiert die laufenden Services.
 
     Sicherheitsregeln:
@@ -718,8 +718,7 @@ def update_settings(payload: dict, request: Request, db: Session = Depends(get_d
         if old_task and not old_task.done():
             old_task.cancel()
         new_receiver = IMAPReceiver(request.app.state.pipeline)
-        loop = asyncio.get_event_loop()
-        new_task = loop.create_task(new_receiver.start_polling())
+        new_task = asyncio.create_task(new_receiver.start_polling())
         request.app.state.imap_task = new_task
         request.app.state.imap_receiver = new_receiver
 
