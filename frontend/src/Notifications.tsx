@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
     Activity, Bell, Send, Mail, ChevronLeft,
-    CheckCircle2, XCircle, Clock, Loader2
+    CheckCircle2, XCircle, Clock, Loader2,
+    MessageSquare, Webhook, FlaskConical,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/Card'
 import { Badge } from './components/ui/Badge'
@@ -19,6 +20,14 @@ interface NotificationHistoryEntry {
     channel: string
     status: string
     error?: string
+}
+
+interface Channel {
+    id: string
+    name: string
+    status: 'configured' | 'mock' | 'disabled'
+    detail: string
+    webhook_urls?: string[]
 }
 
 interface NotificationsProps {
@@ -40,13 +49,15 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
     const [history, setHistory] = useState<NotificationHistoryEntry[]>([])
     const [loadingHistory, setLoadingHistory] = useState(true)
 
+    // Channel status state
+    const [channels, setChannels] = useState<Channel[]>([])
+    const [testingChannel, setTestingChannel] = useState<string | null>(null)
+    const [testResults, setTestResults] = useState<Record<string, { type: 'success' | 'error' | 'mock'; message: string }>>({})
+
     const fetchHistory = useCallback(async () => {
         try {
             const res = await fetch(`${apiUrl}/notify/history`)
-            if (res.ok) {
-                const data = await res.json()
-                setHistory(data)
-            }
+            if (res.ok) setHistory(await res.json())
         } catch (err) {
             console.error('Fehler beim Laden des Verlaufs:', err)
         } finally {
@@ -54,11 +65,24 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
         }
     }, [apiUrl])
 
+    const fetchChannels = useCallback(async () => {
+        try {
+            const res = await fetch(`${apiUrl}/notify/channels`)
+            if (res.ok) {
+                const data = await res.json()
+                setChannels(data.channels ?? [])
+            }
+        } catch (err) {
+            console.error('Fehler beim Laden der Kanalstatus:', err)
+        }
+    }, [apiUrl])
+
     useEffect(() => {
         fetchHistory()
-    }, [fetchHistory])
+        fetchChannels()
+    }, [fetchHistory, fetchChannels])
 
-    const handleSend = async (e: React.FormEvent) => {
+    const handleSend = async (e: { preventDefault(): void }) => {
         e.preventDefault()
         setSending(true)
         setSendResult(null)
@@ -69,19 +93,12 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ recipient, subject, message, severity }),
             })
-
             const data = await res.json()
 
             if (res.ok) {
-                setSendResult({
-                    type: data.status === 'mock' ? 'mock' : 'success',
-                    message: data.message,
-                })
+                setSendResult({ type: data.status === 'mock' ? 'mock' : 'success', message: data.message })
                 await fetchHistory()
-                setRecipient('')
-                setSubject('')
-                setMessage('')
-                setSeverity('HIGH')
+                setRecipient(''); setSubject(''); setMessage(''); setSeverity('HIGH')
             } else {
                 setSendResult({ type: 'error', message: data.detail || 'Fehler beim Versand' })
             }
@@ -89,6 +106,26 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
             setSendResult({ type: 'error', message: 'Verbindungsfehler zum Backend' })
         } finally {
             setSending(false)
+        }
+    }
+
+    const handleTest = async (channelId: string) => {
+        setTestingChannel(channelId)
+        setTestResults(prev => { const n = { ...prev }; delete n[channelId]; return n })
+        try {
+            const res = await fetch(`${apiUrl}/notify/test`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ channel: channelId }),
+            })
+            const data = await res.json()
+            const type = data.status === 'sent' ? 'success' : data.status === 'mock' ? 'mock' : 'error'
+            setTestResults(prev => ({ ...prev, [channelId]: { type, message: data.message || data.detail } }))
+            await fetchHistory()
+        } catch {
+            setTestResults(prev => ({ ...prev, [channelId]: { type: 'error', message: 'Verbindungsfehler' } }))
+        } finally {
+            setTestingChannel(null)
         }
     }
 
@@ -108,6 +145,24 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
                 <XCircle className="w-3 h-3" /> Fehler
             </span>
         )
+    }
+
+    const channelIcon = (id: string) => {
+        if (id === 'email') return <Mail className="w-4 h-4 text-blue-400" />
+        if (id === 'sms') return <MessageSquare className="w-4 h-4 text-violet-400" />
+        return <Webhook className="w-4 h-4 text-cyan-400" />
+    }
+
+    const statusDot = (status: Channel['status']) => {
+        if (status === 'configured') return <div className="w-2 h-2 rounded-full bg-emerald-500" />
+        if (status === 'mock') return <div className="w-2 h-2 rounded-full bg-yellow-500" />
+        return <div className="w-2 h-2 rounded-full bg-slate-600" />
+    }
+
+    const statusLabel = (status: Channel['status']) => {
+        if (status === 'configured') return <span className="text-emerald-400 text-sm font-medium">Konfiguriert</span>
+        if (status === 'mock') return <span className="text-yellow-400 text-sm font-medium">Mock-Modus</span>
+        return <span className="text-slate-500 text-sm">Nicht konfiguriert</span>
     }
 
     return (
@@ -149,13 +204,9 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
                     <CardContent>
                         <form onSubmit={handleSend} className="space-y-4 pt-2">
                             <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-slate-500 uppercase">
-                                    Empfänger (E-Mail)
-                                </label>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Empfänger (E-Mail)</label>
                                 <input
-                                    type="email"
-                                    required
-                                    value={recipient}
+                                    type="email" required value={recipient}
                                     onChange={(e) => setRecipient(e.target.value)}
                                     placeholder="admin@example.com"
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all placeholder:text-slate-600"
@@ -163,12 +214,9 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-slate-500 uppercase">
-                                    Schweregrad
-                                </label>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Schweregrad</label>
                                 <select
-                                    value={severity}
-                                    onChange={(e) => setSeverity(e.target.value)}
+                                    value={severity} onChange={(e) => setSeverity(e.target.value)}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none appearance-none"
                                 >
                                     <option value="INFO">Info</option>
@@ -178,13 +226,9 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-slate-500 uppercase">
-                                    Betreff
-                                </label>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Betreff</label>
                                 <input
-                                    type="text"
-                                    required
-                                    value={subject}
+                                    type="text" required value={subject}
                                     onChange={(e) => setSubject(e.target.value)}
                                     placeholder="z.B. Server DB01 nicht erreichbar"
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all placeholder:text-slate-600"
@@ -192,12 +236,9 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-slate-500 uppercase">
-                                    Nachricht
-                                </label>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Nachricht</label>
                                 <textarea
-                                    required
-                                    value={message}
+                                    required value={message}
                                     onChange={(e) => setMessage(e.target.value)}
                                     placeholder="Beschreibung des Vorfalls..."
                                     rows={5}
@@ -206,94 +247,100 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
                             </div>
 
                             {sendResult && (
-                                <div
-                                    className={`flex items-start gap-3 p-3 rounded-lg border text-sm ${
-                                        sendResult.type === 'success'
-                                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                                            : sendResult.type === 'mock'
-                                            ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
-                                            : 'bg-red-500/10 border-red-500/30 text-red-400'
-                                    }`}
-                                >
-                                    {sendResult.type === 'error' ? (
-                                        <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                                    ) : (
-                                        <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
-                                    )}
+                                <div className={`flex items-start gap-3 p-3 rounded-lg border text-sm ${
+                                    sendResult.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                    : sendResult.type === 'mock' ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
+                                    : 'bg-red-500/10 border-red-500/30 text-red-400'
+                                }`}>
+                                    {sendResult.type === 'error'
+                                        ? <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                                        : <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />}
                                     {sendResult.message}
                                 </div>
                             )}
 
                             <button
-                                type="submit"
-                                disabled={sending}
+                                type="submit" disabled={sending}
                                 className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded-lg text-sm font-semibold text-white transition-colors"
                             >
-                                {sending ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" /> Wird gesendet...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Send className="w-4 h-4" /> Benachrichtigung senden
-                                    </>
-                                )}
+                                {sending ? <><Loader2 className="w-4 h-4 animate-spin" /> Wird gesendet…</>
+                                         : <><Send className="w-4 h-4" /> Benachrichtigung senden</>}
                             </button>
                         </form>
                     </CardContent>
                 </Card>
 
-                {/* Konfiguration Übersicht */}
+                {/* Kanalstatus */}
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-white">
                             <Bell className="w-5 h-5 text-blue-400" />
-                            Konfiguration
+                            Kanalstatus
                         </CardTitle>
                     </CardHeader>
-                    <CardContent className="pt-4 space-y-4">
-                        <div className="space-y-3">
-                            <div className="p-4 bg-slate-900/60 rounded-lg border border-slate-800 space-y-1">
-                                <div className="text-xs font-bold text-slate-500 uppercase">
-                                    E-Mail (SMTP)
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                                    <span className="text-sm text-slate-300">Konfiguriert via .env</span>
-                                </div>
-                                <p className="text-xs text-slate-600">
-                                    SMTP_SERVER · SMTP_USER · ON_CALL_EMAIL
-                                </p>
+                    <CardContent className="pt-4 space-y-3">
+                        {channels.length === 0 ? (
+                            <div className="text-center py-6 text-slate-600">
+                                <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
+                                Lade Kanalstatus…
                             </div>
+                        ) : channels.map((ch) => (
+                            <div
+                                key={ch.id}
+                                className="p-4 bg-slate-900/60 rounded-lg border border-slate-800 space-y-2"
+                            >
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        {channelIcon(ch.id)}
+                                        <span className="text-xs font-bold text-slate-400 uppercase">{ch.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        {statusDot(ch.status)}
+                                        {statusLabel(ch.status)}
+                                    </div>
+                                </div>
 
-                            <div className="p-4 bg-slate-900/60 rounded-lg border border-slate-800 space-y-1 opacity-50">
-                                <div className="text-xs font-bold text-slate-500 uppercase">
-                                    MS Teams
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-slate-600" />
-                                    <span className="text-sm text-slate-500">Noch nicht verfügbar</span>
-                                </div>
-                                <p className="text-xs text-slate-600">Geplant in v0.2.0</p>
-                            </div>
+                                <p className="text-xs text-slate-500">{ch.detail}</p>
 
-                            <div className="p-4 bg-slate-900/60 rounded-lg border border-slate-800 space-y-1 opacity-50">
-                                <div className="text-xs font-bold text-slate-500 uppercase">
-                                    SMS (Twilio)
+                                {/* Test-Button */}
+                                <div className="flex items-center justify-between pt-1">
+                                    <button
+                                        onClick={() => handleTest(ch.id)}
+                                        disabled={testingChannel === ch.id || ch.status === 'disabled'}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-300 hover:text-white transition-colors border border-slate-700"
+                                    >
+                                        {testingChannel === ch.id
+                                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                                            : <FlaskConical className="w-3 h-3" />}
+                                        Test senden
+                                    </button>
+
+                                    {testResults[ch.id] && (
+                                        <span className={`text-xs flex items-center gap-1 ${
+                                            testResults[ch.id].type === 'success' ? 'text-emerald-400'
+                                            : testResults[ch.id].type === 'mock' ? 'text-blue-400'
+                                            : 'text-red-400'
+                                        }`}>
+                                            {testResults[ch.id].type === 'error'
+                                                ? <XCircle className="w-3 h-3" />
+                                                : <CheckCircle2 className="w-3 h-3" />}
+                                            {testResults[ch.id].type === 'success' ? 'Gesendet' : testResults[ch.id].type === 'mock' ? 'Mock OK' : 'Fehler'}
+                                        </span>
+                                    )}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-slate-600" />
-                                    <span className="text-sm text-slate-500">Automatisch bei CRITICAL</span>
-                                </div>
-                                <p className="text-xs text-slate-600">
-                                    TWILIO_ACCOUNT_SID · TWILIO_AUTH_TOKEN
-                                </p>
                             </div>
-                        </div>
+                        ))}
 
                         <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg text-xs text-slate-400">
-                            <span className="text-blue-400 font-semibold">Hinweis: </span>
-                            Ohne SMTP-Konfiguration werden Benachrichtigungen im Mock-Modus simuliert und im Verlauf protokolliert.
+                            <span className="text-blue-400 font-semibold">Webhook / MS Teams: </span>
+                            Incoming Webhook-URL in den{' '}
+                            <button
+                                onClick={() => onNavigate('dashboard')}
+                                className="text-blue-400 underline underline-offset-2 hover:text-blue-300"
+                            >
+                                Eskalationsregeln
+                            </button>{' '}
+                            konfigurieren. Unterstützt Teams MessageCard-Format sowie generische JSON-Webhooks.
                         </div>
                     </CardContent>
                 </Card>
@@ -316,41 +363,38 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
                                 <th className="px-6 py-4 font-semibold">Zeitpunkt</th>
                                 <th className="px-6 py-4 font-semibold">Empfänger</th>
                                 <th className="px-6 py-4 font-semibold">Betreff</th>
+                                <th className="px-6 py-4 font-semibold">Kanal</th>
                                 <th className="px-6 py-4 font-semibold">Severity</th>
                                 <th className="px-6 py-4 font-semibold">Status</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/50">
                             {history.map((entry) => (
-                                <tr
-                                    key={entry.id}
-                                    className="hover:bg-slate-800/40 transition-colors group"
-                                >
+                                <tr key={entry.id} className="hover:bg-slate-800/40 transition-colors group">
                                     <td className="px-6 py-4 whitespace-nowrap text-slate-400 group-hover:text-slate-200">
                                         {format(new Date(`${entry.timestamp}Z`), 'HH:mm:ss')}
                                         <span className="block text-[10px] text-slate-600">
                                             {format(new Date(`${entry.timestamp}Z`), 'dd.MM.yyyy')}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 font-mono text-slate-300 text-xs">
+                                    <td className="px-6 py-4 font-mono text-slate-300 text-xs max-w-[160px] truncate">
                                         {entry.recipient}
                                     </td>
-                                    <td
-                                        className="px-6 py-4 text-slate-300 max-w-xs truncate"
-                                        title={entry.subject}
-                                    >
+                                    <td className="px-6 py-4 text-slate-300 max-w-xs truncate" title={entry.subject}>
                                         {entry.subject}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <span className="text-xs text-slate-400 font-mono capitalize">
+                                            {entry.channel}
+                                        </span>
                                     </td>
                                     <td className="px-6 py-4">
                                         <Badge
                                             variant={
-                                                entry.severity.toLowerCase() === 'critical'
-                                                    ? 'critical'
-                                                    : entry.severity.toLowerCase() === 'high'
-                                                    ? 'high'
-                                                    : entry.severity.toLowerCase() === 'info'
-                                                    ? 'info'
-                                                    : 'default'
+                                                entry.severity.toLowerCase() === 'critical' ? 'critical'
+                                                : entry.severity.toLowerCase() === 'high' ? 'high'
+                                                : entry.severity.toLowerCase() === 'info' ? 'info'
+                                                : 'default'
                                             }
                                         >
                                             {entry.severity}
@@ -361,7 +405,7 @@ export default function Notifications({ onNavigate }: NotificationsProps) {
                             ))}
                             {!loadingHistory && history.length === 0 && (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center">
+                                    <td colSpan={6} className="px-6 py-12 text-center">
                                         <div className="flex flex-col items-center gap-2 text-slate-600">
                                             <Bell className="w-8 h-8 opacity-20" />
                                             <p>Noch keine Benachrichtigungen versendet.</p>

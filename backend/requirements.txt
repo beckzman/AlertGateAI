@@ -8,3 +8,4 @@ aiosmtplib
 twilio
 openai
 slowapi
+httpx

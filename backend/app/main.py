@@ -45,6 +45,11 @@ class SendNotificationRequest(BaseModel):
     severity: str = "INFO"
 
 
+class TestNotificationRequest(BaseModel):
+    channel: str  # "email" | "sms" | "webhook"
+    target: Optional[str] = None  # Empfänger-Override (E-Mail, Telefon oder Webhook-URL)
+
+
 class EscalationRuleRequest(BaseModel):
     email_enabled: bool = False
     email_recipients: str = ""
@@ -284,6 +289,127 @@ def get_notification_history(db: Session = Depends(get_db)):
         "status": e.status,
         "error": e.error,
     } for e in entries]
+
+
+@app.get("/notify/channels")
+def get_notification_channels(request: Request, db: Session = Depends(get_db)):
+    """Gibt den konfigurierten Status aller Benachrichtigungskanäle zurück."""
+    alerter: AlertingService = request.app.state.alerter
+
+    # Webhook-Konfiguration aus Eskalationsregeln ermitteln
+    rules = db.query(EscalationRule).all()
+    webhook_rules = [r for r in rules if r.webhook_enabled and r.webhook_url]
+    webhook_urls = list({r.webhook_url for r in webhook_rules})
+
+    channels = [
+        {
+            "id": "email",
+            "name": "E-Mail (SMTP)",
+            "status": alerter.email_status(),
+            "detail": (
+                f"{alerter.smtp_server} → {alerter.on_call_email}"
+                if alerter.email_status() == "configured"
+                else "Kein SMTP-Server konfiguriert – Mock-Modus aktiv"
+            ),
+        },
+        {
+            "id": "sms",
+            "name": "SMS (Twilio)",
+            "status": alerter.sms_status(),
+            "detail": (
+                f"Twilio → {alerter.on_call_phone}"
+                if alerter.sms_status() == "configured"
+                else "Kein Twilio-Konto konfiguriert – Mock-Modus aktiv"
+            ),
+        },
+        {
+            "id": "webhook",
+            "name": "Webhook / MS Teams",
+            "status": "configured" if webhook_urls else "disabled",
+            "detail": (
+                f"{len(webhook_urls)} Webhook-URL(s) konfiguriert"
+                if webhook_urls
+                else "Kein Webhook in den Eskalationsregeln aktiviert"
+            ),
+            "webhook_urls": webhook_urls,
+        },
+    ]
+    return {"channels": channels}
+
+
+@app.post("/notify/test")
+async def test_notification(req: TestNotificationRequest, request: Request, db: Session = Depends(get_db)):
+    """Sendet eine Test-Benachrichtigung über den angegebenen Kanal."""
+    alerter: AlertingService = request.app.state.alerter
+    channel = req.channel.lower()
+
+    if channel == "email":
+        recipient = req.target or alerter.on_call_email
+        result = await alerter.send_manual_email(
+            recipient,
+            "AlertGateAI Test-Benachrichtigung",
+            "Dies ist eine Test-Benachrichtigung von AlertGateAI. Konfiguration erfolgreich!",
+            "INFO",
+        )
+        entry = NotificationHistory(
+            recipient=recipient,
+            subject="AlertGateAI Test-Benachrichtigung",
+            message="Test-Benachrichtigung",
+            severity="INFO",
+            channel="email",
+            status=result["status"],
+            error=result["message"] if result["status"] == "failed" else None,
+        )
+        db.add(entry)
+        db.commit()
+        return result
+
+    elif channel == "sms":
+        result = await alerter.send_test_sms(req.target)
+        entry = NotificationHistory(
+            recipient=req.target or alerter.on_call_phone,
+            subject="AlertGateAI Test-SMS",
+            message="Test-SMS",
+            severity="INFO",
+            channel="sms",
+            status=result["status"],
+            error=result["message"] if result["status"] == "failed" else None,
+        )
+        db.add(entry)
+        db.commit()
+        return result
+
+    elif channel == "webhook":
+        if not req.target:
+            # Ersten konfigurierten Webhook aus den Regeln verwenden
+            rule = db.query(EscalationRule).filter(
+                EscalationRule.webhook_enabled == True,
+                EscalationRule.webhook_url != "",
+                EscalationRule.webhook_url.isnot(None),
+            ).first()
+            url = rule.webhook_url if rule else None
+        else:
+            url = req.target
+
+        if not url:
+            raise HTTPException(status_code=400, detail="Kein Webhook-URL konfiguriert.")
+
+        result = await alerter.send_test_webhook(url)
+        entry = NotificationHistory(
+            recipient=url[:255],
+            subject="AlertGateAI Test-Webhook",
+            message="Test-Webhook",
+            severity="INFO",
+            channel="webhook",
+            status=result["status"],
+            error=result["message"] if result["status"] == "failed" else None,
+        )
+        db.add(entry)
+        db.commit()
+        return result
+
+    else:
+        raise HTTPException(status_code=400, detail="channel muss 'email', 'sms' oder 'webhook' sein.")
 
 
 @app.get("/escalation")
