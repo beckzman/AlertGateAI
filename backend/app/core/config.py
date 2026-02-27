@@ -20,8 +20,8 @@ class Config:
     # IMAP
     IMAP_SERVER = os.getenv("IMAP_SERVER", "imap.gmail.com")
     IMAP_PORT = int(os.getenv("IMAP_PORT", 993))
-    IMAP_USER = os.getenv("IMAP_USER", "test@example.com")
-    IMAP_PASSWORD = os.getenv("IMAP_PASSWORD", "secret")
+    IMAP_USER = os.getenv("IMAP_USER", "")
+    IMAP_PASSWORD = os.getenv("IMAP_PASSWORD", "")
     IMAP_POLL_INTERVAL = int(os.getenv("IMAP_POLL_INTERVAL", 10))
     
     # Alerting
@@ -29,14 +29,14 @@ class Config:
     SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
     SMTP_USER = os.getenv("SMTP_USER", "")
     SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-    SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "bot@mycompany.com")
-    
-    ON_CALL_EMAIL = os.getenv("ON_CALL_EMAIL", "oncall@mycompany.com")
-    ON_CALL_PHONE = os.getenv("ON_CALL_PHONE", "+49123456789")
-    
+    SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "")
+
+    ON_CALL_EMAIL = os.getenv("ON_CALL_EMAIL", "")
+    ON_CALL_PHONE = os.getenv("ON_CALL_PHONE", "")
+
     # Twilio
     TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
     TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
-    TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "+123456789")
+    TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "")
 
 settings = Config()
