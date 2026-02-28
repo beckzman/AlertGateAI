@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Server, Activity, AlertTriangle, CheckCircle2, AlertCircle, Search, RefreshCw, Bell, Settings, SlidersHorizontal, ThumbsUp, ThumbsDown, Link2, X } from 'lucide-react'
+import { Server, Activity, AlertTriangle, CheckCircle2, AlertCircle, Search, RefreshCw, Bell, Settings, SlidersHorizontal, ThumbsUp, ThumbsDown, Link2, X, Download } from 'lucide-react'
 import type { Page } from './App'
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/Card'
 import { Badge } from './components/ui/Badge'
@@ -241,6 +241,19 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
         setLogs(prev => prev.map(l => l.id === logId ? { ...l, feedback } : l))
     }
 
+    const handleExportCsv = () => {
+        const params = new URLSearchParams()
+        if (colSeverity) params.set('severity', colSeverity)
+        if (colSource) params.set('source_ip', colSource)
+        const url = `${apiUrl}/export/logs${params.toString() ? '?' + params.toString() : ''}`
+        const a = document.createElement('a')
+        a.href = url
+        a.download = ''
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+    }
+
     const displayedLogs = logs.filter(log => {
         const datum = format(new Date(`${log.timestamp}Z`), 'dd.MM.yyyy')
         if (colDatum && !datum.includes(colDatum)) return false
@@ -254,7 +267,7 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
     })
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 w-full max-w-7xl mx-auto space-y-8">
+        <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 w-full max-w-[1920px] mx-auto space-y-8">
             {/* Header */}
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800/60">
                 <div className="flex items-center gap-3">
@@ -270,6 +283,14 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    <button
+                        onClick={handleExportCsv}
+                        className="flex items-center gap-2 px-3 py-2 bg-slate-900/50 hover:bg-slate-800 rounded-xl border border-slate-800 text-sm text-slate-400 hover:text-white transition-colors"
+                        title="Events als CSV exportieren"
+                    >
+                        <Download className="w-4 h-4" />
+                        <span>Export CSV</span>
+                    </button>
                     <button
                         onClick={() => onNavigate('alerting')}
                         className="flex items-center gap-2 px-3 py-2 bg-slate-900/50 hover:bg-slate-800 rounded-xl border border-slate-800 text-sm text-slate-400 hover:text-white transition-colors"
@@ -575,11 +596,13 @@ export default function Dashboard({ onNavigate }: DashboardProps) {
                                             {STATUS_LABEL[log.status ?? 'new'] ?? 'NEU'}
                                         </button>
                                     </td>
-                                    <td className="px-4 py-4 font-mono text-[10px] text-slate-500 break-words min-w-[200px] max-w-sm whitespace-pre-wrap">
-                                        {log.message}
+                                    <td className="px-4 py-4 min-w-[350px] max-w-2xl">
+                                        <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-800 shadow-inner font-mono text-xs md:text-sm text-slate-200 break-words whitespace-pre-wrap leading-relaxed">
+                                            {log.message}
+                                        </div>
                                     </td>
-                                    <td className="px-4 py-4">
-                                        <div className="text-slate-200 font-medium leading-relaxed">
+                                    <td className="px-4 py-4 min-w-[150px] max-w-[250px]">
+                                        <div className="text-slate-400 text-[11px] leading-snug mb-1">
                                             {log.diagnosis}
                                         </div>
                                         {log.confidence != null && (

@@ -1,5 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+import csv, io
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -293,6 +295,53 @@ def get_logs(
         "correlation_id": log.correlation_id,
         "feedback": log.feedback,
     } for log in logs]
+
+@app.get("/export/logs")
+def export_logs(
+    severity: str = None,
+    source_ip: str = None,
+    db: Session = Depends(get_db),
+):
+    """Exportiert alle passenden Events als CSV-Datei."""
+    from datetime import datetime, timezone
+    query = db.query(LogEntry)
+    if severity:
+        query = query.filter(LogEntry.severity == severity)
+    if source_ip:
+        query = query.filter(LogEntry.source_ip.contains(source_ip))
+    logs = query.order_by(LogEntry.timestamp.desc()).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Zeitstempel", "Quelle", "Service", "Severity", "Status",
+        "Nachricht", "Diagnose", "Empfehlung", "Confidence",
+        "Cluster-ID", "Correlation-ID", "Feedback",
+    ])
+    for log in logs:
+        writer.writerow([
+            log.timestamp.strftime("%Y-%m-%d %H:%M:%S") if log.timestamp else "",
+            log.source_ip or "",
+            log.service_name or "",
+            log.severity or "",
+            log.status or "new",
+            log.message or "",
+            log.diagnosis or "",
+            log.recommendation or "",
+            f"{log.confidence:.0%}" if log.confidence is not None else "",
+            log.cluster_id or "",
+            log.correlation_id or "",
+            log.feedback or "",
+        ])
+
+    output.seek(0)
+    filename = f"alertgate_export_{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.csv"
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode("utf-8-sig")),  # BOM für Excel-Kompatibilität
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
 
 @app.get("/stats")
 def get_stats(db: Session = Depends(get_db)):
