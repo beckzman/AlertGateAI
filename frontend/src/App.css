@@ -6,9 +6,69 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
-  background-color: #0f172a; /* slate-900 */
+  background-color: var(--color-slate-950);
 }
 
 #root {
   width: 100%;
+}
+
+/* Light Theme Variables (Inverting Slates) */
+.theme-light {
+  --color-slate-950: #f8fafc;
+  --color-slate-900: #f1f5f9;
+  --color-slate-800: #e2e8f0;
+  --color-slate-700: #cbd5e1;
+  --color-slate-600: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-400: #475569;
+  --color-slate-300: #334155;
+  --color-slate-200: #1e293b;
+  --color-slate-100: #0f172a;
+  --color-slate-50:  #020617;
+}
+
+/* Retro Fallout Theme Variables */
+.theme-fallout {
+  --color-slate-950: #050505;
+  --color-slate-900: #0a0a0a;
+  --color-slate-800: #111111;
+  --color-slate-700: #1a1a1a;
+  --color-slate-600: #224422;
+  --color-slate-500: #33aa33;
+  --color-slate-400: #44ff44;
+  --color-slate-300: #44ff44;
+  --color-slate-200: #44ff44;
+  --color-slate-100: #33ee33;
+
+  --color-blue-500: #22ff22;
+  --color-blue-400: #22ee22;
+  --color-blue-300: #11cc11;
+  --color-cyan-300: #22ff22;
+  --color-cyan-400: #22ff22;
+  
+  --color-emerald-500: #44ff44;
+  --color-emerald-400: #44ff44;
+  
+  --color-amber-500: #ccff00;
+  --color-amber-400: #ccff00;
+  
+  --color-red-500: #ffaa00;
+  --color-red-400: #ffaa00;
+  
+  --color-violet-600: #11cc11;
+  --color-violet-500: #22ff22;
+  --color-violet-400: #22ff22;
+  --color-violet-300: #33ff33;
+
+  font-family: "Courier New", Courier, monospace, ui-monospace, SFMono-Regular;
+}
+
+/* Base text color overrides for fallbacks */
+.theme-light body {
+  color: var(--color-slate-100);
+}
+.theme-fallout body {
+  color: var(--color-slate-400);
+  text-shadow: 0 0 2px rgba(68, 255, 68, 0.4);
 }

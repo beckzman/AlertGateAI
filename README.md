@@ -24,9 +24,22 @@ AlertGateAI ist ein intelligentes AIOps-Zentrum zur Überwachung deiner IT-Infra
 - **On-Call Feedback**: ThumbsUp/Down-Buttons markieren Events als korrekt diagnostiziert oder als False Positive
 
 ### Alerting & Eskalation
-- **Smart Alerting**: Aggregation über 3-Minuten-Zeitfenster mit KI-Zusammenfassung
+- **Smart Alerting**: Aggregation über 60s-Zeitfenster mit KI-Zusammenfassung
 - **Eskalationsmatrix**: Konfigurierbare Regeln pro Severity (INFO/HIGH/CRITICAL) mit E-Mail, SMS und Webhook
-- **Multi-Channel**: SMTP (E-Mail) + Twilio (SMS), Mock-Modus wenn nicht konfiguriert
+- **DB-gesteuerte Dispatch**: Empfänger und Webhook-URLs kommen aus den DB-Eskalationsregeln, nicht aus `.env`-Hardcodes
+- **Multi-Channel Versand**: SMTP (E-Mail), Twilio (SMS), Webhook/MS Teams — Mock-Modus wenn nicht konfiguriert
+
+### Notification Management
+- **Kanalstatus**: `GET /notify/channels` liefert Live-Status (configured/mock/disabled) für alle Kanäle
+- **Test-Funnel**: `POST /notify/test` sendet eine Test-Nachricht pro Kanal und protokolliert das Ergebnis im Verlauf
+- **MS Teams / Webhook**: HTTP POST mit Teams MessageCard-Format — kompatibel mit Slack und generischen Webhooks
+- **Versandverlauf**: Alle Benachrichtigungen mit Kanal-Spalte (email/sms/webhook)
+
+### Web-Konfiguration (Settings)
+- **Settings-Seite**: Alle Parameter (KI, IMAP, SMTP, On-Call, Twilio) im Browser konfigurierbar — kein `.env`-Edit nötig
+- **Live-Reload ohne Restart**: SMTP/Twilio sofort wirksam, LLM via Client-Re-Init, IMAP via asyncio Task-Neustart
+- **Sichere Passwortverwaltung**: Secrets werden in SQLite gespeichert, niemals im Klartext zurückgegeben (`***`)
+- **DB-Persistenz**: Gespeicherte Werte überschreiben `.env`-Defaults bei jedem Start automatisch
 
 ### Dashboard
 - **Echtzeit-Visualisierung**: Alert-Tabelle mit Live-Polling (10s Intervall)
@@ -55,13 +68,17 @@ Syslog / E-Mail / REST API
   └── {severity, diagnosis, recommendation, confidence}
          │
          ▼
-  [ SQLite DB ] ← log_entries, escalation_rules, notification_history
+  [ SQLite DB ] ← log_entries, escalation_rules, notification_history, app_settings
          │
-         ├──► [ AlertingService ] → E-Mail / SMS / Mock
+         ├──► [ AlertingService ] → E-Mail (SMTP) / SMS (Twilio) / Webhook (MS Teams)
          └──► [ RCAService ]       → Root Cause Hypothesen (on-demand)
          │
          ▼
   [ React Dashboard ] ← pollt Backend alle 10s
+  ├── Dashboard      (Alerts, Triage, RCA, Feedback)
+  ├── Alarmierung    (Eskalationsregeln pro Severity)
+  ├── Benachrichtigungen (Kanalstatus, Test, Verlauf)
+  └── Einstellungen  (Web-Konfiguration, Live-Reload)
 ```
 
 ---
@@ -77,13 +94,15 @@ cd AlertGateAI
 ### 2. Konfiguration
 ```bash
 cp backend/.env.example backend/.env
-# .env editieren: API-Keys, SMTP, Twilio, On-Call Kontakte eintragen
+# .env editieren: mindestens DATABASE_URL setzen
 ```
 
 **Wichtig für Docker**: Datenbankpfad auf persistentes Volume setzen:
 ```
 DATABASE_URL=sqlite:////app/data/aiops.db
 ```
+
+Alle weiteren Parameter (API-Keys, SMTP, Twilio, On-Call) können nach dem ersten Start bequem über **Dashboard → Einstellungen** im Browser gesetzt werden. Kein Neustart erforderlich.
 
 ### 3. System starten
 ```bash
@@ -97,6 +116,19 @@ docker-compose up -d --build
 | Backend API | `http://<ip>:8000` |
 | API Docs | `http://<ip>:8000/docs` |
 | Syslog Receiver | `udp://<ip>:5140` |
+| Mailpit (Test-SMTP) | `http://<ip>:8025` |
+
+### Container-Verwaltung
+```bash
+# Backend neu starten (nach .env-Änderungen)
+docker compose restart backend
+
+# Backend neu bauen (nach Code-Änderungen)
+docker compose up -d --build backend
+
+# Logs überwachen
+docker compose logs -f backend
+```
 
 ---
 
@@ -157,12 +189,18 @@ curl -X POST localhost:8000/logs/correlation/<correlation_id>/rca
 | `GET` | `/stats` | Severity-Verteilung + 24h Timeline |
 | `GET` | `/escalation` | Eskalationsregeln abrufen |
 | `PUT` | `/escalation/{severity}` | Eskalationsregel aktualisieren |
+| `GET` | `/notify/channels` | Live-Status aller Kanäle (configured/mock/disabled) |
+| `POST` | `/notify/test` | Test-Nachricht über einen Kanal senden |
 | `POST` | `/notify/send` | Manuelle E-Mail senden |
-| `GET` | `/notify/history` | Benachrichtigungs-Verlauf |
+| `GET` | `/notify/history` | Benachrichtigungs-Verlauf (inkl. Kanal-Spalte) |
+| `GET` | `/settings` | Alle Konfigurationsparameter abrufen (Secrets maskiert) |
+| `PUT` | `/settings` | Parameter speichern + sofort live aktivieren |
 
 ---
 
 ## 🛠️ Konfigurations-Parameter (`.env`)
+
+> **Hinweis:** Alle Parameter können nach dem ersten Start auch bequem über **Dashboard → Einstellungen** konfiguriert werden — kein `.env`-Edit und kein Neustart nötig. DB-Werte überschreiben `.env`-Defaults automatisch.
 
 | Variable | Beschreibung | Standard |
 | :--- | :--- | :--- |
@@ -171,15 +209,21 @@ curl -X POST localhost:8000/logs/correlation/<correlation_id>/rca
 | `LOCAL_LLM_URL` | OpenAI-kompatibler Endpunkt | `http://localhost:1234/v1` |
 | `LOCAL_LLM_MODEL` | Modellname für lokale KI | — |
 | `DATABASE_URL` | SQLAlchemy DB-URL | `sqlite:///./aiops.db` |
+| `IMAP_SERVER` | IMAP Server (E-Mail Eingang) | `imap.gmail.com` |
+| `IMAP_PORT` | IMAP Port | `993` |
+| `IMAP_USER` | IMAP Benutzername | — |
+| `IMAP_PASSWORD` | IMAP Passwort / App-Token | — |
+| `IMAP_POLL_INTERVAL` | Abfrageintervall in Sekunden | `10` |
 | `SMTP_SERVER` | SMTP Server | — |
 | `SMTP_PORT` | SMTP Port | `587` |
 | `SMTP_USER` | SMTP Benutzername | — |
 | `SMTP_PASSWORD` | SMTP Passwort | — |
-| `TWILIO_SID` | Twilio Account SID | — |
+| `SMTP_FROM_EMAIL` | Absender-Adresse | — |
+| `TWILIO_ACCOUNT_SID` | Twilio Account SID | — |
 | `TWILIO_AUTH_TOKEN` | Twilio Auth Token | — |
-| `TWILIO_FROM` | Twilio Absender-Nummer | — |
-| `ON_CALL_EMAIL` | E-Mail des Bereitschaftsdienstes | `oncall@mycompany.com` |
-| `ON_CALL_PHONE` | Telefon des Bereitschaftsdienstes | `+49123456789` |
+| `TWILIO_FROM_NUMBER` | Twilio Absender-Nummer | — |
+| `ON_CALL_EMAIL` | E-Mail des Bereitschaftsdienstes | — |
+| `ON_CALL_PHONE` | Telefon des Bereitschaftsdienstes | — |
 
 ---
 

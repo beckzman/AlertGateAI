@@ -2,6 +2,38 @@
 
 Alle wichtigen Änderungen an **AlertGateAI** werden in dieser Datei dokumentiert.
 
+## [0.3.0] - 2026-02-27
+
+### ✨ Neue Features
+
+#### Zentrales Notification-Management
+- **Webhook / MS Teams**: Neuer Kanal neben E-Mail und SMS. HTTP POST im Teams MessageCard-Format (kompatibel mit Slack und generischen Webhooks). URL wird pro Eskalationsregel in der DB gespeichert.
+- **DB-gesteuerte Dispatch**: `_process_aggregated_alerts()` liest Empfänger und Webhook-URLs aus den Eskalationsregeln in SQLite — kein Hardcode mehr in `.env`.
+- **`GET /notify/channels`**: Liefert Live-Status (configured/mock/disabled) für alle drei Kanäle (email/sms/webhook).
+- **`POST /notify/test`**: Sendet eine Test-Nachricht über den gewählten Kanal und protokolliert das Ergebnis im Versandverlauf.
+- **Kanal-Spalte im Verlauf**: Benachrichtigungs-Historie zeigt jetzt den verwendeten Kanal (email/sms/webhook) je Eintrag.
+- **Dynamische Notifications-Seite**: Kanalstatus-Karten mit farbigem Indikator und "Test senden"-Button pro Kanal.
+
+#### Web-Konfigurationsseite (Settings)
+- **`GET /settings`** und **`PUT /settings`**: Vollständige Konfiguration aller Parameter (KI, IMAP, SMTP, On-Call, Twilio) über die REST API. Secrets werden in SQLite gespeichert und niemals im Klartext zurückgegeben (`***`).
+- **Settings-Seite im Dashboard**: Alle Parameter im Browser konfigurierbar — kein `.env`-Edit nötig. Erreichbar über den neuen "Einstellungen"-Button in der Navigation.
+- **`AppSetting`-Tabelle**: Neues Key-Value-Modell in SQLite mit `is_secret`-Flag. DB-Werte überschreiben `.env`-Defaults bei jedem Start automatisch.
+- **Sichere Passwortverwaltung**: Passwortfelder mit Eye/EyeOff-Toggle. Leere Felder beim Speichern = bestehenden Wert behalten. "gesetzt"-Badge wenn Secret bereits konfiguriert.
+- **Live-Reload ohne Restart**: Alle Services werden nach dem Speichern sofort aktualisiert:
+  - SMTP/Twilio: `reload_from_settings()` auf `AlertingService`
+  - LLM: `reload_from_settings()` auf `AIDiagnosticService` (Client-Re-Initialisierung)
+  - IMAP: `old_task.cancel()` + `asyncio.create_task(new_receiver.start_polling())` — neue Verbindung ohne Container-Neustart
+
+### 🛠️ Infrastruktur & Architektur
+- **`app.state`-Erweiterung**: `imap_task` und `imap_receiver` werden im Lifespan-Kontext registriert, damit `PUT /settings` den IMAP-Task gezielt ersetzen kann.
+- **`httpx` Abhängigkeit**: Für asynchrone Webhook-Anfragen in `AlertingService`.
+
+### 🐛 Fixes
+- **`PUT /settings` Verbindungsfehler**: Sync-Endpoint rief `asyncio.get_event_loop()` auf, was in Python 3.10+ im Thread-Pool-Kontext fehlschlägt. Behoben durch `async def update_settings` + `asyncio.create_task()`.
+- **Placeholder-Defaults entfernt**: `config.py` hatte hartkodierte Fallback-Werte (`+49123456789`, `oncall@mycompany.com`, `test@example.com`, `secret`). Alle Felder standardmäßig auf `""` gesetzt.
+
+---
+
 ## [0.2.0] - 2026-02-25
 
 ### ✨ Neue Features
