@@ -338,9 +338,16 @@ def get_stats(db: Session = Depends(get_db)):
             "INFO": entry.get("INFO", 0),
         })
 
+    # 3. Top Sources (letzte 24h)
+    source_counts = db.query(
+        LogEntry.source_ip,
+        func.count(LogEntry.id)
+    ).filter(LogEntry.timestamp >= since).group_by(LogEntry.source_ip).order_by(func.count(LogEntry.id).desc()).limit(10).all()
+
     return {
         "severity": {s: c for s, c in severity_counts},
         "timeline": timeline,
+        "top_sources": [{"source": s, "count": c} for s, c in source_counts],
     }
 
 @app.post("/notify/send")
