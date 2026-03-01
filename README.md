@@ -48,6 +48,7 @@ AlertGateAI ist ein intelligentes AIOps-Zentrum zur Überwachung deiner IT-Infra
 - **KPI-Karten**: Total Events, Critical (inkl. %-Anteil), High, Info
 - **Alert-Frequenz-Chart**: Stacked Bar Chart nach Severity, letzte 24h
 - **TriageModal**: Alert-Story + RCA-Analyse direkt im Dashboard
+- **CSV-Export**: "Export CSV"-Button exportiert alle Events als CSV-Datei (UTF-8-BOM, Excel-kompatibel, 12 Spalten inkl. Cluster/Correlation/Feedback). Aktive Severity- und Source-Filter werden übernommen.
 
 ---
 
@@ -195,6 +196,7 @@ curl -X POST localhost:8000/logs/correlation/<correlation_id>/rca
 | `GET` | `/notify/history` | Benachrichtigungs-Verlauf (inkl. Kanal-Spalte) |
 | `GET` | `/settings` | Alle Konfigurationsparameter abrufen (Secrets maskiert) |
 | `PUT` | `/settings` | Parameter speichern + sofort live aktivieren |
+| `GET` | `/export/logs` | Alle Events als CSV exportieren (Filter: severity, source_ip) |
 
 ---
 

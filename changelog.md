@@ -2,6 +2,17 @@
 
 Alle wichtigen Änderungen an **AlertGateAI** werden in dieser Datei dokumentiert.
 
+## [0.3.1] - 2026-03-01
+
+### ✨ Neue Features
+
+#### CSV-Export
+- **`GET /export/logs`**: Neuer Endpoint der alle passenden Events ohne Row-Limit als CSV-Datei zurückgibt. Optionale Filter: `severity`, `source_ip` (analog zu `/logs`). UTF-8-BOM Encoding für korrekte Darstellung von Umlauten in Excel und LibreOffice.
+- **12 Spalten**: Zeitstempel, Quelle, Service, Severity, Status, Nachricht, Diagnose, Empfehlung, Confidence, Cluster-ID, Correlation-ID, Feedback.
+- **"Export CSV"-Button** im Dashboard-Header: Übergibt aktive Severity- und Source-Filter automatisch; Browser startet den Download mit vorausgefülltem Dateinamen `alertgate_export_YYYY-MM-DD.csv`.
+
+---
+
 ## [0.3.0] - 2026-02-27
 
 ### ✨ Neue Features
